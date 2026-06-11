@@ -1,7 +1,7 @@
 {
-  "name": "Posti",
-  "short_name": "Posti",
-  "description": "La tua mappa personale di locali, con categorie e tag.",
+  "name": "MilanoGourmet",
+  "short_name": "MilanoGourmet",
+  "description": "La tua mappa personale del mangiare e bere bene",
   "lang": "it",
   "start_url": "./",
   "scope": "./",
