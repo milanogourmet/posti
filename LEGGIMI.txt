@@ -1,0 +1,39 @@
+POSTI v2 — mappa personale di locali (PWA)
+===========================================
+
+NOVITA' DELLA v2
+  - Stato per ogni posto: Da provare / Visitato / Preferito,
+    con filtri dedicati in basso e cambio rapido dalla scheda.
+    I preferiti hanno una stellina dorata sul pin.
+  - Autocomplete dei tag: durante l'inserimento vengono
+    suggeriti i tag gia' esistenti (tocca per aggiungere).
+  - Import da Google Takeout: Impostazioni > Importa da
+    Google Takeout. Supporta "Saved Places.json" (GeoJSON)
+    e i CSV degli elenchi salvati. I posti senza coordinate
+    vengono cercati per nome (max 100 per importazione).
+    Duplicati riconosciuti e ignorati automaticamente.
+
+COME OTTENERE I FILE DA GOOGLE TAKEOUT
+  1. takeout.google.com > deseleziona tutto
+  2. Seleziona solo "Maps (i tuoi luoghi)" e/o "Salvati"
+  3. Esporta, scarica lo ZIP, estrai i .json o .csv
+  4. In Posti: Impostazioni > Importa da Google Takeout
+
+PRIMA PUBBLICAZIONE (GitHub Pages, gratuito)
+  1. github.com > New repository > nome "posti" > Public
+  2. Carica TUTTI i file di questa cartella > Commit
+  3. Settings > Pages > Branch: main, cartella / (root) > Save
+  4. Apri https://TUONOME.github.io/posti/ in Safari
+  5. Condividi > "Aggiungi alla schermata Home"
+
+AGGIORNAMENTO DA v1 (se gia' pubblicata)
+  1. Nel repository: carica di nuovo index.html e sw.js
+     (sovrascrivono i vecchi) > Commit
+  2. Sull'iPhone apri l'app due volte: al secondo avvio
+     carica la v2. I posti gia' salvati vengono mantenuti
+     (quelli esistenti ricevono lo stato "Da provare").
+
+NOTE
+  - I dati restano SOLO sul tuo iPhone. Esporta
+    periodicamente il backup JSON da Impostazioni.
+  - Mappa: OpenStreetMap. Ricerca: Photon/Nominatim.

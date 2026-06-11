@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Posti</title>
+<meta name="description" content="La tua mappa personale di locali, con categorie e tag.">
+<meta name="theme-color" content="#FBFAF7">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Posti">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+:root{
+  --paper:#FBFAF7;
+  --ink:#20242E;
+  --ink-2:#5B6472;
+  --line:#E5E2DA;
+  --bitter:#D8432C;
+  --white:#FFFFFF;
+  --r:14px;
+  --shadow:0 6px 24px rgba(32,36,46,.14), 0 1px 3px rgba(32,36,46,.10);
+  --sat:env(safe-area-inset-top, 0px);
+  --sab:env(safe-area-inset-bottom, 0px);
+  --font-ui:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-display:"Fraunces", Georgia, serif;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
+body{font-family:var(--font-ui);color:var(--ink);background:var(--paper)}
+#map{position:fixed;inset:0;z-index:1;background:#E9E6DE}
+.leaflet-control-attribution{font-size:9px;opacity:.75}
+button{font-family:var(--font-ui)}
+
+/* ---- pin tondo (signature) ---- */
+.pin{
+  width:34px;height:34px;border-radius:50%;
+  background:var(--white);
+  border:3px solid var(--c,#5B6472);
+  box-shadow:0 2px 8px rgba(32,36,46,.35);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;line-height:1;
+  position:relative;
+}
+.pin::after{
+  content:"";position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);
+  width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+  border-top:8px solid var(--c,#5B6472);
+}
+.pin.tmp{border-style:dashed;animation:pulse 1.2s ease-in-out infinite}
+.pin .star{
+  position:absolute;top:-8px;right:-8px;width:17px;height:17px;border-radius:50%;
+  background:#E0A21C;color:#fff;font-size:10px;line-height:1;
+  display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;
+}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+@media (prefers-reduced-motion: reduce){ .pin.tmp{animation:none} }
+
+/* ---- suggerimenti tag ---- */
+.tagsugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tag.sugg{border:1px dashed #CFCBBF;background:var(--white);cursor:pointer;font-family:var(--font-ui)}
+.tag.sugg:active{background:#F3F1EA}
+
+/* ---- barra di ricerca ---- */
+.topbar{
+  position:fixed;z-index:1000;
+  top:calc(var(--sat) + 10px);left:12px;right:12px;
+}
+.searchbox{
+  display:flex;align-items:center;gap:8px;
+  background:var(--white);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);padding:0 12px;height:48px;
+}
+.searchbox .brand{
+  font-family:var(--font-display);font-weight:700;font-size:19px;color:var(--bitter);
+  letter-spacing:.2px;user-select:none;padding-right:8px;border-right:1px solid var(--line);
+}
+.searchbox input{
+  flex:1;border:0;outline:0;font-size:16px;background:transparent;color:var(--ink);min-width:0;
+}
+.searchbox input::placeholder{color:var(--ink-2)}
+.searchbox .clear{border:0;background:transparent;color:var(--ink-2);font-size:18px;padding:6px;display:none}
+.results{
+  margin-top:8px;background:var(--white);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);overflow:hidden;display:none;max-height:46vh;overflow-y:auto;
+}
+.results .res{
+  display:block;width:100%;text-align:left;border:0;background:transparent;
+  padding:11px 14px;border-bottom:1px solid var(--line);cursor:pointer;
+}
+.results .res:last-child{border-bottom:0}
+.results .res:active{background:#F3F1EA}
+.res .rn{font-size:15px;font-weight:600}
+.res .ra{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.res.hint{color:var(--ink-2);font-size:13px;cursor:default}
+
+/* ---- bottoni flottanti ---- */
+.fabs{position:fixed;z-index:900;right:12px;bottom:calc(var(--sab) + 76px);display:flex;flex-direction:column;gap:10px}
+.fab{
+  width:46px;height:46px;border-radius:50%;border:1px solid var(--line);
+  background:var(--white);box-shadow:var(--shadow);font-size:19px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);
+}
+.fab:active{transform:scale(.94)}
+
+/* ---- chips categorie ---- */
+.bottombar{
+  position:fixed;z-index:900;left:0;right:0;bottom:0;
+  padding:10px 10px calc(var(--sab) + 10px);
+  display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+  background:linear-gradient(to top, rgba(251,250,247,.96), rgba(251,250,247,0));
+}
+.bottombar::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto;display:flex;align-items:center;gap:6px;
+  height:38px;padding:0 13px;border-radius:999px;
+  background:var(--white);border:1.5px solid var(--line);
+  box-shadow:0 2px 8px rgba(32,36,46,.10);
+  font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;white-space:nowrap;
+}
+.chip .dot{width:10px;height:10px;border-radius:50%;background:var(--c,var(--ink-2))}
+.chip.on{border-color:var(--c,var(--ink));background:var(--c,var(--ink));color:var(--white)}
+.chip.on .dot{background:var(--white)}
+.chip .n{font-weight:500;opacity:.7;font-size:12.5px}
+.chip.tagchip.on{background:var(--ink);border-color:var(--ink)}
+
+/* ---- sheet ---- */
+.backdrop{position:fixed;inset:0;z-index:1100;background:rgba(32,36,46,.34);display:none}
+.sheet{
+  position:fixed;z-index:1200;left:0;right:0;bottom:0;
+  background:var(--paper);border-radius:18px 18px 0 0;
+  box-shadow:0 -8px 32px rgba(32,36,46,.22);
+  max-height:82vh;display:none;flex-direction:column;
+  padding-bottom:calc(var(--sab) + 8px);
+}
+.sheet.open,.backdrop.open{display:flex}
+.backdrop.open{display:block}
+.sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:9px auto 2px}
+.sheet header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 18px 10px;border-bottom:1px solid var(--line);
+}
+.sheet header h2{
+  margin:0;font-family:var(--font-display);font-weight:700;font-size:21px;letter-spacing:.1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.sheet header .x{border:0;background:#EFEDE6;color:var(--ink);width:30px;height:30px;border-radius:50%;font-size:15px;cursor:pointer;flex:0 0 auto;margin-left:10px}
+.sheet .body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 18px}
+
+/* ---- form ---- */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);margin-bottom:6px}
+.field input[type=text],.field textarea{
+  width:100%;border:1px solid var(--line);border-radius:10px;background:var(--white);
+  padding:11px 12px;font-size:16px;color:var(--ink);outline:none;font-family:var(--font-ui);
+}
+.field input:focus,.field textarea:focus{border-color:var(--bitter)}
+.field textarea{resize:vertical;min-height:64px}
+.catpick{display:flex;flex-wrap:wrap;gap:8px}
+.catpick .chip{box-shadow:none}
+.addr{font-size:13px;color:var(--ink-2);line-height:1.45}
+.btnrow{display:flex;gap:10px;margin-top:6px}
+.btn{
+  flex:1;border:0;border-radius:12px;height:46px;font-size:15.5px;font-weight:600;cursor:pointer;
+}
+.btn.primary{background:var(--bitter);color:var(--white)}
+.btn.primary:active{filter:brightness(.92)}
+.btn.ghost{background:var(--white);border:1.5px solid var(--line);color:var(--ink)}
+.btn.danger{background:var(--white);border:1.5px solid #E3B8B1;color:#A8341F}
+
+/* ---- dettaglio ---- */
+.badge{display:inline-flex;align-items:center;gap:7px;background:var(--white);border:1.5px solid var(--c,var(--line));color:var(--ink);border-radius:999px;padding:5px 12px;font-size:13.5px;font-weight:600}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--c,var(--ink-2))}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tag{background:#EFEDE6;color:var(--ink);border-radius:999px;padding:4px 11px;font-size:13px;font-weight:500}
+.detail .addr{margin-top:12px}
+.detail .notes{margin-top:12px;font-size:14.5px;line-height:1.55;white-space:pre-wrap}
+.detail .meta{margin-top:14px;font-size:11.5px;color:var(--ink-2)}
+
+/* ---- lista ---- */
+.listsearch{margin-bottom:10px}
+.listsearch input{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--white);padding:10px 12px;font-size:16px;outline:none}
+.placerow{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  background:var(--white);border:1px solid var(--line);border-radius:12px;
+  padding:11px 13px;margin-bottom:8px;cursor:pointer;
+}
+.placerow:active{background:#F3F1EA}
+.placerow .pdot{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:2.5px solid var(--c,var(--ink-2));display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--white)}
+.placerow .pt{min-width:0;flex:1}
+.placerow .pn{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.placerow .pa{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.placerow .ptags{font-size:11.5px;color:var(--bitter);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.empty{color:var(--ink-2);font-size:14px;text-align:center;padding:26px 10px;line-height:1.5}
+
+/* ---- impostazioni ---- */
+.setsec{margin-bottom:22px}
+.setsec h3{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);margin:0 0 10px}
+.catrow{display:flex;align-items:center;gap:10px;background:var(--white);border:1px solid var(--line);border-radius:12px;padding:9px 12px;margin-bottom:7px}
+.catrow .dot{width:14px;height:14px;border-radius:50%;background:var(--c)}
+.catrow .cn{flex:1;font-size:14.5px;font-weight:600}
+.catrow .cc{font-size:12px;color:var(--ink-2)}
+.catrow .del{border:0;background:transparent;color:#A8341F;font-size:16px;cursor:pointer;padding:4px}
+.newcat{display:flex;gap:8px;align-items:center}
+.newcat input[type=text]{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:16px;background:var(--white);outline:none;min-width:0}
+.newcat .emoji{width:56px;flex:0 0 auto;text-align:center}
+.newcat input[type=color]{width:42px;height:42px;border:1px solid var(--line);border-radius:10px;background:var(--white);padding:3px;flex:0 0 auto}
+.newcat .add{flex:0 0 auto;width:42px;height:42px;border-radius:10px;border:0;background:var(--bitter);color:var(--white);font-size:20px;cursor:pointer}
+.stat{font-size:13.5px;color:var(--ink-2);line-height:1.6}
+
+/* ---- toast ---- */
+.toast{
+  position:fixed;z-index:2000;left:50%;transform:translateX(-50%);
+  bottom:calc(var(--sab) + 86px);
+  background:var(--ink);color:var(--white);font-size:14px;font-weight:500;
+  padding:10px 18px;border-radius:999px;box-shadow:var(--shadow);
+  opacity:0;pointer-events:none;transition:opacity .25s;
+  max-width:86vw;text-align:center;
+}
+.toast.show{opacity:1}
+input[type=file]{display:none}
+:focus-visible{outline:2px solid var(--bitter);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<div id="map" aria-label="Mappa dei locali"></div>
+
+<div class="topbar">
+  <div class="searchbox">
+    <span class="brand">Posti</span>
+    <input id="q" type="text" placeholder="Cerca un locale o un indirizzo…" autocomplete="off" enterkeyhint="search">
+    <button class="clear" id="qclear" aria-label="Pulisci ricerca">✕</button>
+  </div>
+  <div class="results" id="results"></div>
+</div>
+
+<div class="fabs">
+  <button class="fab" id="btn-locate" aria-label="Vai alla mia posizione" title="La mia posizione">➤</button>
+  <button class="fab" id="btn-list" aria-label="Elenco dei posti salvati" title="Elenco">☰</button>
+  <button class="fab" id="btn-settings" aria-label="Impostazioni" title="Impostazioni">⚙︎</button>
+</div>
+
+<nav class="bottombar" id="chips" aria-label="Filtri"></nav>
+
+<div class="backdrop" id="backdrop"></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <header>
+    <h2 id="sheet-title"></h2>
+    <button class="x" id="sheet-close" aria-label="Chiudi">✕</button>
+  </header>
+  <div class="body" id="sheet-body"></div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+<input type="file" id="importfile" accept="application/json,.json">
+<input type="file" id="takeoutfile" accept=".json,.geojson,.csv,application/json,text/csv,application/geo+json">
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+"use strict";
+
+/* ============ stato e persistenza ============ */
+const LS_KEY = "posti.data.v1";
+const DEFAULT_CATS = [
+  {id:"rist",  name:"Ristorante",  emoji:"🍝", color:"#D8432C"},
+  {id:"pizza", name:"Pizzeria",    emoji:"🍕", color:"#E08914"},
+  {id:"caffe", name:"Caffè",       emoji:"☕", color:"#7A4A2B"},
+  {id:"cockt", name:"Cocktail bar",emoji:"🍸", color:"#8246AF"},
+  {id:"enot",  name:"Enoteca",     emoji:"🍷", color:"#7D2231"},
+  {id:"gelat", name:"Gelateria",   emoji:"🍨", color:"#2E8BC0"},
+  {id:"past",  name:"Pasticceria", emoji:"🍰", color:"#D6699A"},
+  {id:"altro", name:"Altro",       emoji:"📍", color:"#5B6472"}
+];
+
+const STATUSES = [
+  {id:"try",     name:"Da provare", icon:"⏳", color:"#B07A2A"},
+  {id:"visited", name:"Visitato",   icon:"✓",  color:"#3E7C4F"},
+  {id:"fav",     name:"Preferito",  icon:"★",  color:"#E0A21C"}
+];
+const stById = id => STATUSES.find(s=>s.id===id) || STATUSES[0];
+
+let state = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){
+      const d = JSON.parse(raw);
+      if(Array.isArray(d.places) && Array.isArray(d.categories)){
+        d.places.forEach(p=>{ if(!p.status) p.status = "try"; }); // migrazione v1 → v2
+        return d;
+      }
+    }
+  }catch(e){ console.warn("load:", e); }
+  return { places:[], categories: DEFAULT_CATS.map(c=>({...c})), settings:{} };
+}
+function save(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch(e){ toast("Errore di salvataggio: spazio esaurito?"); }
+}
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const catById = id => state.categories.find(c=>c.id===id) || {id:"?",name:"Senza categoria",emoji:"📍",color:"#5B6472"};
+
+/* filtri attivi */
+const filters = { cats:new Set(), tags:new Set(), status:new Set() };
+
+/* ============ utilità ============ */
+function esc(s){
+  return String(s ?? "").replace(/[&<>"']/g, m => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]
+  ));
+}
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._h);
+  toast._h = setTimeout(()=>t.classList.remove("show"), 2300);
+}
+function debounce(fn, ms){
+  let h; return (...a)=>{ clearTimeout(h); h=setTimeout(()=>fn(...a), ms); };
+}
+function allTags(){
+  const s = new Set();
+  state.places.forEach(p => (p.tags||[]).forEach(t => s.add(t)));
+  return [...s].sort((a,b)=>a.localeCompare(b,"it"));
+}
+function parseTags(str){
+  return [...new Set(String(str||"").split(",").map(t=>t.trim().replace(/^#/,"")).filter(Boolean))];
+}
+
+/* ============ mappa ============ */
+const map = L.map("map", { zoomControl:false, attributionControl:true })
+  .setView([45.4642, 9.1900], 13); // Milano
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+
+const markersLayer = L.layerGroup().addTo(map);
+let tmpMarker = null;
+
+function pinIcon(cat, tmp=false, status=null){
+  const star = status==="fav" ? '<span class="star">★</span>' : "";
+  return L.divIcon({
+    className: "",
+    html: `<div class="pin${tmp?" tmp":""}" style="--c:${esc(cat.color)}">${esc(cat.emoji)}${star}</div>`,
+    iconSize: [34,43],
+    iconAnchor: [17,43]
+  });
+}
+function clearTmp(){ if(tmpMarker){ map.removeLayer(tmpMarker); tmpMarker = null; } }
+
+function visiblePlaces(){
+  return state.places.filter(p=>{
+    if(filters.cats.size && !filters.cats.has(p.cat)) return false;
+    if(filters.status.size && !filters.status.has(p.status || "try")) return false;
+    if(filters.tags.size && ![...filters.tags].every(t => (p.tags||[]).includes(t))) return false;
+    return true;
+  });
+}
+function renderMarkers(){
+  markersLayer.clearLayers();
+  visiblePlaces().forEach(p=>{
+    const c = catById(p.cat);
+    L.marker([p.lat, p.lon], { icon: pinIcon(c, false, p.status), title: p.name })
+      .on("click", ()=> openDetail(p.id))
+      .addTo(markersLayer);
+  });
+}
+
+/* pressione prolungata sulla mappa → aggiungi posto */
+(function longPress(){
+  const el = map.getContainer();
+  let timer = null, start = null;
+  const cancel = ()=>{ clearTimeout(timer); timer = null; };
+  el.addEventListener("touchstart", e=>{
+    if(e.touches.length !== 1) return cancel();
+    start = { x:e.touches[0].clientX, y:e.touches[0].clientY };
+    timer = setTimeout(()=>{
+      const pt = map.mouseEventToLatLng(e.touches[0]);
+      onMapLongPress(pt);
+    }, 550);
+  }, {passive:true});
+  el.addEventListener("touchmove", e=>{
+    if(!timer || !start) return;
+    const dx = e.touches[0].clientX - start.x, dy = e.touches[0].clientY - start.y;
+    if(Math.hypot(dx,dy) > 12) cancel();
+  }, {passive:true});
+  el.addEventListener("touchend", cancel);
+  el.addEventListener("touchcancel", cancel);
+  map.on("contextmenu", e => onMapLongPress(e.latlng)); // desktop: tasto destro
+})();
+
+async function onMapLongPress(latlng){
+  if(navigator.vibrate) navigator.vibrate(12);
+  clearTmp();
+  tmpMarker = L.marker(latlng, { icon: pinIcon({emoji:"➕", color:"#D8432C"}, true) }).addTo(map);
+  map.panTo(latlng);
+  const addr = await reverseGeocode(latlng.lat, latlng.lng);
+  openForm({ lat: latlng.lat, lon: latlng.lng, address: addr, name: "" });
+}
+
+/* ============ geocoding ============ */
+async function searchPlaces(q){
+  const c = map.getCenter();
+  // Photon (komoot): veloce, adatto all'autocomplete
+  try{
+    const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lat=${c.lat.toFixed(4)}&lon=${c.lng.toFixed(4)}`;
+    const r = await fetch(u);
+    if(r.ok){
+      const d = await r.json();
+      const out = (d.features||[]).map(f=>{
+        const p = f.properties || {};
+        const parts = [p.street && (p.street + (p.housenumber? " "+p.housenumber : "")), p.postcode, p.city || p.county, p.country]
+          .filter(Boolean);
+        return {
+          name: p.name || parts[0] || "Senza nome",
+          address: parts.join(", "),
+          lat: f.geometry.coordinates[1],
+          lon: f.geometry.coordinates[0]
+        };
+      });
+      if(out.length) return out;
+    }
+  }catch(e){ console.warn("photon:", e); }
+  // Fallback: Nominatim
+  try{
+    const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=it&q=${encodeURIComponent(q)}`;
+    const r = await fetch(u);
+    if(r.ok){
+      const d = await r.json();
+      return d.map(x=>({
+        name: x.name || (x.display_name||"").split(",")[0],
+        address: x.display_name || "",
+        lat: parseFloat(x.lat), lon: parseFloat(x.lon)
+      }));
+    }
+  }catch(e){ console.warn("nominatim:", e); }
+  return [];
+}
+async function reverseGeocode(lat, lon){
+  try{
+    const u = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=it&lat=${lat}&lon=${lon}`;
+    const r = await fetch(u);
+    if(r.ok){ const d = await r.json(); return d.display_name || ""; }
+  }catch(e){ console.warn("reverse:", e); }
+  return "";
+}
+
+/* ============ ricerca UI ============ */
+const qInput = document.getElementById("q");
+const qClear = document.getElementById("qclear");
+const resultsEl = document.getElementById("results");
+
+const doSearch = debounce(async ()=>{
+  const q = qInput.value.trim();
+  qClear.style.display = q ? "block" : "none";
+  if(q.length < 3){ resultsEl.style.display = "none"; resultsEl.innerHTML = ""; return; }
+  resultsEl.innerHTML = `<div class="res hint">Ricerca in corso…</div>`;
+  resultsEl.style.display = "block";
+  const found = await searchPlaces(q);
+  if(qInput.value.trim() !== q) return; // risposta superata
+  if(!found.length){
+    resultsEl.innerHTML = `<div class="res hint">Nessun risultato. Prova ad aggiungere la città (es. “… Milano”).</div>`;
+    return;
+  }
+  resultsEl.innerHTML = "";
+  found.forEach(f=>{
+    const b = document.createElement("button");
+    b.className = "res";
+    b.innerHTML = `<div class="rn">${esc(f.name)}</div><div class="ra">${esc(f.address)}</div>`;
+    b.addEventListener("click", ()=>{
+      resultsEl.style.display = "none";
+      qInput.blur();
+      clearTmp();
+      tmpMarker = L.marker([f.lat, f.lon], { icon: pinIcon({emoji:"➕", color:"#D8432C"}, true) }).addTo(map);
+      map.flyTo([f.lat, f.lon], 17, {duration:.7});
+      openForm({ lat:f.lat, lon:f.lon, name:f.name, address:f.address });
+    });
+    resultsEl.appendChild(b);
+  });
+}, 380);
+
+qInput.addEventListener("input", doSearch);
+qClear.addEventListener("click", ()=>{
+  qInput.value = ""; qClear.style.display = "none";
+  resultsEl.style.display = "none"; resultsEl.innerHTML = "";
+  qInput.focus();
+});
+map.on("movestart", ()=>{ resultsEl.style.display = "none"; });
+
+/* ============ chips filtri ============ */
+function renderChips(){
+  const wrap = document.getElementById("chips");
+  wrap.innerHTML = "";
+
+  // chip tag
+  const tg = document.createElement("button");
+  tg.className = "chip tagchip" + (filters.tags.size ? " on" : "");
+  tg.innerHTML = `# Tag${filters.tags.size ? ` <span class="n">${filters.tags.size}</span>` : ""}`;
+  tg.addEventListener("click", openTagFilter);
+  wrap.appendChild(tg);
+
+  // chip stato
+  STATUSES.forEach(s=>{
+    const n = state.places.filter(p => (p.status||"try") === s.id).length;
+    const b = document.createElement("button");
+    b.className = "chip" + (filters.status.has(s.id) ? " on" : "");
+    b.style.setProperty("--c", s.color);
+    b.innerHTML = `${s.icon} ${esc(s.name)}${n?` <span class="n">${n}</span>`:""}`;
+    b.addEventListener("click", ()=>{
+      filters.status.has(s.id) ? filters.status.delete(s.id) : filters.status.add(s.id);
+      refresh();
+    });
+    wrap.appendChild(b);
+  });
+
+  // chip "tutti"
+  const all = document.createElement("button");
+  all.className = "chip" + ((filters.cats.size===0 && filters.status.size===0 && filters.tags.size===0) ? " on" : "");
+  all.style.setProperty("--c", "#20242E");
+  all.textContent = "Tutti";
+  all.addEventListener("click", ()=>{
+    filters.cats.clear(); filters.status.clear(); filters.tags.clear();
+    refresh();
+  });
+  wrap.appendChild(all);
+
+  state.categories.forEach(c=>{
+    const n = state.places.filter(p=>p.cat===c.id).length;
+    const b = document.createElement("button");
+    b.className = "chip" + (filters.cats.has(c.id) ? " on" : "");
+    b.style.setProperty("--c", c.color);
+    b.innerHTML = `<span class="dot"></span>${esc(c.emoji)} ${esc(c.name)}${n?` <span class="n">${n}</span>`:""}`;
+    b.addEventListener("click", ()=>{
+      filters.cats.has(c.id) ? filters.cats.delete(c.id) : filters.cats.add(c.id);
+      refresh();
+    });
+    wrap.appendChild(b);
+  });
+}
+function refresh(){ renderChips(); renderMarkers(); save(); }
+
+/* ============ sheet ============ */
+const sheet = document.getElementById("sheet");
+const backdrop = document.getElementById("backdrop");
+const sheetTitle = document.getElementById("sheet-title");
+const sheetBody = document.getElementById("sheet-body");
+
+function openSheet(title){
+  sheetTitle.textContent = title;
+  sheetBody.innerHTML = "";
+  sheet.classList.add("open");
+  backdrop.classList.add("open");
+  sheetBody.scrollTop = 0;
+  return sheetBody;
+}
+function closeSheet(){
+  sheet.classList.remove("open");
+  backdrop.classList.remove("open");
+  clearTmp();
+}
+document.getElementById("sheet-close").addEventListener("click", closeSheet);
+backdrop.addEventListener("click", closeSheet);
+
+/* ============ form aggiungi / modifica ============ */
+function openForm(prefill, editId=null){
+  const editing = editId ? state.places.find(p=>p.id===editId) : null;
+  const data = editing ? {...editing} : { name:"", cat:state.categories[0]?.id, status:"try", tags:[], notes:"", ...prefill };
+  const body = openSheet(editing ? "Modifica posto" : "Nuovo posto");
+
+  let selCat = data.cat || state.categories[0]?.id;
+  let selSt = data.status || "try";
+
+  body.innerHTML = `
+    <div class="field">
+      <label for="f-name">Nome</label>
+      <input type="text" id="f-name" value="${esc(data.name)}" placeholder="Es. Trattoria da Pino" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Categoria</label>
+      <div class="catpick" id="f-cats"></div>
+    </div>
+    <div class="field">
+      <label>Stato</label>
+      <div class="catpick" id="f-status"></div>
+    </div>
+    <div class="field">
+      <label for="f-tags">Tag <span style="text-transform:none;font-weight:500">(separati da virgola)</span></label>
+      <input type="text" id="f-tags" value="${esc((data.tags||[]).join(", "))}" placeholder="es. pranzo veloce, da provare, terrazza" autocomplete="off">
+      <div class="tagsugg" id="f-tagsugg" style="display:none"></div>
+    </div>
+    <div class="field">
+      <label for="f-notes">Note</label>
+      <textarea id="f-notes" placeholder="Appunti personali…">${esc(data.notes||"")}</textarea>
+    </div>
+    <div class="field">
+      <label>Indirizzo</label>
+      <div class="addr">${esc(data.address || "—")}<br><span style="opacity:.7">${data.lat.toFixed(5)}, ${data.lon.toFixed(5)}</span></div>
+    </div>
+    <div class="btnrow">
+      <button class="btn ghost" id="f-cancel">Annulla</button>
+      <button class="btn primary" id="f-save">${editing ? "Salva modifiche" : "Salva posto"}</button>
+    </div>
+  `;
+
+  const catsEl = body.querySelector("#f-cats");
+  function paintCats(){
+    catsEl.innerHTML = "";
+    state.categories.forEach(c=>{
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (selCat===c.id ? " on" : "");
+      b.style.setProperty("--c", c.color);
+      b.innerHTML = `${esc(c.emoji)} ${esc(c.name)}`;
+      b.addEventListener("click", ()=>{ selCat = c.id; paintCats(); });
+      catsEl.appendChild(b);
+    });
+  }
+  paintCats();
+
+  const stEl = body.querySelector("#f-status");
+  function paintStatus(){
+    stEl.innerHTML = "";
+    STATUSES.forEach(s=>{
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (selSt===s.id ? " on" : "");
+      b.style.setProperty("--c", s.color);
+      b.innerHTML = `${s.icon} ${esc(s.name)}`;
+      b.addEventListener("click", ()=>{ selSt = s.id; paintStatus(); });
+      stEl.appendChild(b);
+    });
+  }
+  paintStatus();
+
+  /* autocomplete tag */
+  const tagsInp = body.querySelector("#f-tags");
+  const suggEl = body.querySelector("#f-tagsugg");
+  function paintSugg(){
+    const all = allTags();
+    const cur = parseTags(tagsInp.value);
+    const frag = tagsInp.value.split(",").pop().trim().toLowerCase().replace(/^#/,"");
+    let cand = all.filter(t => !cur.includes(t));
+    if(frag) cand = cand.filter(t => t.toLowerCase().includes(frag) && t.toLowerCase() !== frag);
+    cand = cand.slice(0, 8);
+    suggEl.innerHTML = "";
+    cand.forEach(t=>{
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tag sugg";
+      b.textContent = "#" + t;
+      b.addEventListener("click", ()=>{
+        const parts = tagsInp.value.split(",");
+        parts.pop();
+        parts.push(" " + t);
+        tagsInp.value = parts.join(",").replace(/^\s+/, "") + ", ";
+        paintSugg();
+        tagsInp.focus();
+      });
+      suggEl.appendChild(b);
+    });
+    suggEl.style.display = cand.length ? "flex" : "none";
+  }
+  tagsInp.addEventListener("input", paintSugg);
+  tagsInp.addEventListener("focus", paintSugg);
+  paintSugg();
+
+  body.querySelector("#f-cancel").addEventListener("click", closeSheet);
+  body.querySelector("#f-save").addEventListener("click", ()=>{
+    const name = body.querySelector("#f-name").value.trim();
+    if(!name){ toast("Inserisci un nome"); return; }
+    const rec = {
+      id: editing ? editing.id : uid(),
+      name,
+      cat: selCat,
+      status: selSt,
+      tags: parseTags(body.querySelector("#f-tags").value),
+      notes: body.querySelector("#f-notes").value.trim(),
+      address: data.address || "",
+      lat: data.lat, lon: data.lon,
+      created: editing ? editing.created : Date.now()
+    };
+    if(editing){
+      const i = state.places.findIndex(p=>p.id===editing.id);
+      state.places[i] = rec;
+      toast("Posto aggiornato");
+    }else{
+      state.places.push(rec);
+      toast("Posto salvato");
+    }
+    clearTmp();
+    refresh();
+    openDetail(rec.id);
+  });
+}
+
+/* ============ dettaglio ============ */
+function openDetail(id){
+  const p = state.places.find(x=>x.id===id);
+  if(!p) return;
+  const c = catById(p.cat);
+  const st = stById(p.status || "try");
+  const body = openSheet(p.name);
+  body.innerHTML = `
+    <div class="detail">
+      <span class="badge" style="--c:${esc(c.color)}"><span class="dot"></span>${esc(c.emoji)} ${esc(c.name)}</span>
+      <div class="catpick" id="d-status" style="margin-top:12px"></div>
+      ${(p.tags&&p.tags.length) ? `<div class="tags">${p.tags.map(t=>`<span class="tag">#${esc(t)}</span>`).join("")}</div>` : ""}
+      ${p.address ? `<div class="addr">${esc(p.address)}</div>` : ""}
+      ${p.notes ? `<div class="notes">${esc(p.notes)}</div>` : ""}
+      <div class="meta">Aggiunto il ${new Date(p.created).toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"})} · ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div>
+      <div class="btnrow" style="margin-top:16px">
+        <button class="btn ghost" id="d-maps">Indicazioni</button>
+        <button class="btn ghost" id="d-edit">Modifica</button>
+      </div>
+      <div class="btnrow" style="margin-top:10px">
+        <button class="btn danger" id="d-del">Elimina</button>
+      </div>
+    </div>
+  `;
+  const dstEl = body.querySelector("#d-status");
+  function paintDSt(){
+    dstEl.innerHTML = "";
+    STATUSES.forEach(s=>{
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + ((p.status||"try")===s.id ? " on" : "");
+      b.style.setProperty("--c", s.color);
+      b.innerHTML = `${s.icon} ${esc(s.name)}`;
+      b.addEventListener("click", ()=>{
+        p.status = s.id;
+        save(); renderMarkers(); renderChips(); paintDSt();
+      });
+      dstEl.appendChild(b);
+    });
+  }
+  paintDSt();
+
+  body.querySelector("#d-maps").addEventListener("click", ()=>{
+    window.open(`https://maps.apple.com/?daddr=${p.lat},${p.lon}&q=${encodeURIComponent(p.name)}`, "_blank");
+  });
+  body.querySelector("#d-edit").addEventListener("click", ()=> openForm({}, p.id));
+  body.querySelector("#d-del").addEventListener("click", ()=>{
+    if(!confirm(`Eliminare “${p.name}”?`)) return;
+    state.places = state.places.filter(x=>x.id!==p.id);
+    refresh();
+    closeSheet();
+    toast("Posto eliminato");
+  });
+  map.flyTo([p.lat, p.lon], Math.max(map.getZoom(), 16), {duration:.5});
+}
+
+/* ============ elenco ============ */
+function openList(){
+  const body = openSheet("I tuoi posti");
+  body.innerHTML = `
+    <div class="listsearch"><input type="text" id="l-q" placeholder="Filtra per nome, tag o indirizzo…" autocomplete="off"></div>
+    <div id="l-items"></div>
+  `;
+  const itemsEl = body.querySelector("#l-items");
+  const inp = body.querySelector("#l-q");
+  function paint(){
+    const q = inp.value.trim().toLowerCase();
+    let list = visiblePlaces();
+    if(q) list = list.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      (p.address||"").toLowerCase().includes(q) ||
+      (p.tags||[]).some(t=>t.toLowerCase().includes(q))
+    );
+    list = [...list].sort((a,b)=>a.name.localeCompare(b.name,"it"));
+    itemsEl.innerHTML = "";
+    if(!list.length){
+      itemsEl.innerHTML = `<div class="empty">${state.places.length ? "Nessun posto corrisponde ai filtri." : "Nessun posto salvato.<br>Cerca un locale o tieni premuto sulla mappa per aggiungerne uno."}</div>`;
+      return;
+    }
+    list.forEach(p=>{
+      const c = catById(p.cat);
+      const st = stById(p.status || "try");
+      const b = document.createElement("button");
+      b.className = "placerow";
+      b.style.setProperty("--c", c.color);
+      b.innerHTML = `
+        <span class="pdot">${esc(c.emoji)}</span>
+        <span class="pt">
+          <div class="pn"><span style="color:${esc(st.color)}">${st.icon}</span> ${esc(p.name)}</div>
+          ${p.address?`<div class="pa">${esc(p.address)}</div>`:""}
+          ${(p.tags&&p.tags.length)?`<div class="ptags">${p.tags.map(t=>"#"+esc(t)).join(" ")}</div>`:""}
+        </span>`;
+      b.addEventListener("click", ()=>{ openDetail(p.id); });
+      itemsEl.appendChild(b);
+    });
+  }
+  inp.addEventListener("input", debounce(paint, 150));
+  paint();
+}
+
+/* ============ filtro tag ============ */
+function openTagFilter(){
+  const tags = allTags();
+  const body = openSheet("Filtra per tag");
+  if(!tags.length){
+    body.innerHTML = `<div class="empty">Non hai ancora assegnato tag.<br>Aggiungili quando salvi o modifichi un posto.</div>`;
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "catpick";
+  function paint(){
+    wrap.innerHTML = "";
+    tags.forEach(t=>{
+      const b = document.createElement("button");
+      b.className = "chip" + (filters.tags.has(t) ? " on" : "");
+      b.style.setProperty("--c", "#20242E");
+      b.textContent = "#" + t;
+      b.addEventListener("click", ()=>{
+        filters.tags.has(t) ? filters.tags.delete(t) : filters.tags.add(t);
+        paint(); renderChips(); renderMarkers();
+      });
+      wrap.appendChild(b);
+    });
+  }
+  paint();
+  body.appendChild(wrap);
+  const row = document.createElement("div");
+  row.className = "btnrow"; row.style.marginTop = "18px";
+  row.innerHTML = `<button class="btn ghost" id="t-clear">Azzera</button><button class="btn primary" id="t-ok">Applica</button>`;
+  body.appendChild(row);
+  row.querySelector("#t-clear").addEventListener("click", ()=>{ filters.tags.clear(); paint(); renderChips(); renderMarkers(); });
+  row.querySelector("#t-ok").addEventListener("click", closeSheet);
+}
+
+/* ============ impostazioni ============ */
+function openSettings(){
+  const body = openSheet("Impostazioni");
+  const nPlaces = state.places.length, nTags = allTags().length;
+  body.innerHTML = `
+    <div class="setsec">
+      <h3>Categorie</h3>
+      <div id="s-cats"></div>
+      <div class="newcat" style="margin-top:10px">
+        <input type="text" id="s-cn" placeholder="Nuova categoria" autocomplete="off">
+        <input type="text" id="s-ce" class="emoji" placeholder="🙂" maxlength="4" autocomplete="off">
+        <input type="color" id="s-cc" value="#D8432C" aria-label="Colore categoria">
+        <button class="add" id="s-add" aria-label="Aggiungi categoria">+</button>
+      </div>
+    </div>
+    <div class="setsec">
+      <h3>Backup e importazione</h3>
+      <div class="btnrow">
+        <button class="btn ghost" id="s-exp">Esporta JSON</button>
+        <button class="btn ghost" id="s-imp">Importa JSON</button>
+      </div>
+      <div class="btnrow" style="margin-top:10px">
+        <button class="btn ghost" id="s-tko">Importa da Google Takeout</button>
+      </div>
+      <p class="stat" style="margin-top:10px">I dati restano solo su questo dispositivo. Esporta periodicamente un backup.<br>Takeout: supporta "Saved Places.json" e i CSV degli elenchi salvati.</p>
+    </div>
+    <div class="setsec">
+      <h3>Archivio</h3>
+      <p class="stat">${nPlaces} ${nPlaces===1?"posto salvato":"posti salvati"} · ${nTags} tag · ${state.categories.length} categorie</p>
+      <p class="stat">Posti v2 · Dati mappa © OpenStreetMap · Ricerca: Photon / Nominatim</p>
+    </div>
+  `;
+  const catsEl = body.querySelector("#s-cats");
+  function paint(){
+    catsEl.innerHTML = "";
+    state.categories.forEach(c=>{
+      const used = state.places.filter(p=>p.cat===c.id).length;
+      const row = document.createElement("div");
+      row.className = "catrow";
+      row.style.setProperty("--c", c.color);
+      row.innerHTML = `
+        <span class="dot"></span>
+        <span class="cn">${esc(c.emoji)} ${esc(c.name)}</span>
+        <span class="cc">${used ? used + " posti" : ""}</span>
+        ${used ? "" : `<button class="del" data-id="${esc(c.id)}" aria-label="Elimina categoria">🗑</button>`}
+      `;
+      const del = row.querySelector(".del");
+      if(del) del.addEventListener("click", ()=>{
+        if(!confirm(`Eliminare la categoria “${c.name}”?`)) return;
+        state.categories = state.categories.filter(x=>x.id!==c.id);
+        filters.cats.delete(c.id);
+        refresh(); paint();
+      });
+      catsEl.appendChild(row);
+    });
+  }
+  paint();
+  body.querySelector("#s-add").addEventListener("click", ()=>{
+    const name = body.querySelector("#s-cn").value.trim();
+    const emoji = body.querySelector("#s-ce").value.trim() || "📍";
+    const color = body.querySelector("#s-cc").value;
+    if(!name){ toast("Dai un nome alla categoria"); return; }
+    state.categories.push({ id: uid(), name, emoji, color });
+    body.querySelector("#s-cn").value = ""; body.querySelector("#s-ce").value = "";
+    refresh(); paint();
+    toast("Categoria aggiunta");
+  });
+  body.querySelector("#s-exp").addEventListener("click", exportJSON);
+  body.querySelector("#s-imp").addEventListener("click", ()=> document.getElementById("importfile").click());
+  body.querySelector("#s-tko").addEventListener("click", ()=> document.getElementById("takeoutfile").click());
+}
+
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `posti-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  toast("Backup esportato");
+}
+document.getElementById("importfile").addEventListener("change", e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    try{
+      const d = JSON.parse(r.result);
+      if(!Array.isArray(d.places) || !Array.isArray(d.categories)) throw new Error("formato");
+      if(!confirm(`Importare ${d.places.length} posti? I dati attuali verranno sostituiti.`)) return;
+      state = d; save();
+      filters.cats.clear(); filters.tags.clear();
+      refresh(); closeSheet();
+      toast("Backup importato");
+    }catch(err){ toast("File non valido"); }
+  };
+  r.readAsText(f);
+  e.target.value = "";
+});
+
+/* ============ import Google Takeout ============ */
+function parseCSV(text){
+  const rows = []; let row = [], field = "", inQ = false;
+  for(let i=0; i<text.length; i++){
+    const ch = text[i];
+    if(inQ){
+      if(ch === '"'){ if(text[i+1] === '"'){ field += '"'; i++; } else inQ = false; }
+      else field += ch;
+    }else{
+      if(ch === '"') inQ = true;
+      else if(ch === ','){ row.push(field); field = ""; }
+      else if(ch === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
+      else if(ch !== '\r') field += ch;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.length > 1 || (r[0] && r[0].trim()));
+}
+function coordsFromUrl(u){
+  if(!u) return null;
+  let m = u.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if(m) return {lat:+m[1], lon:+m[2]};
+  m = u.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if(m) return {lat:+m[1], lon:+m[2]};
+  m = u.match(/[?&](?:q|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if(m) return {lat:+m[1], lon:+m[2]};
+  return null;
+}
+function validCoords(lat, lon){
+  return Number.isFinite(lat) && Number.isFinite(lon) &&
+    Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0);
+}
+function parseTakeout(text){
+  const items = [], pending = [];
+  let gj = null;
+  try{ gj = JSON.parse(text); }catch(e){}
+  if(gj && gj.type === "FeatureCollection" && Array.isArray(gj.features)){
+    gj.features.forEach(f=>{
+      const pr = f.properties || {};
+      const loc = pr.Location || {};
+      const name = (pr.Title || loc["Business Name"] || pr.name || "").trim();
+      if(!name) return;
+      const notes = (pr.Note || pr.Comment || "").trim();
+      let lat = null, lon = null;
+      if(f.geometry && Array.isArray(f.geometry.coordinates)){
+        lon = +f.geometry.coordinates[0]; lat = +f.geometry.coordinates[1];
+      }
+      if(!validCoords(lat, lon) && loc["Geo Coordinates"]){
+        lat = +loc["Geo Coordinates"].Latitude; lon = +loc["Geo Coordinates"].Longitude;
+      }
+      if(validCoords(lat, lon)) items.push({name, address: loc.Address || "", lat, lon, notes});
+      else pending.push({name, notes});
+    });
+    return {items, pending};
+  }
+  const rows = parseCSV(text);
+  if(rows.length < 2) return {items, pending};
+  const head = rows[0].map(h => h.trim().toLowerCase());
+  const iT = head.indexOf("title"), iU = head.indexOf("url"),
+        iN = head.indexOf("note"), iC = head.indexOf("comment");
+  if(iT === -1) return {items, pending};
+  rows.slice(1).forEach(r=>{
+    const name = (r[iT] || "").trim();
+    if(!name) return;
+    const notes = [iN>-1 ? r[iN] : "", iC>-1 ? r[iC] : ""].map(x=>(x||"").trim()).filter(Boolean).join(" — ");
+    const c = coordsFromUrl(iU>-1 ? r[iU] : "");
+    if(c && validCoords(c.lat, c.lon)) items.push({name, address:"", lat:c.lat, lon:c.lon, notes});
+    else pending.push({name, notes});
+  });
+  return {items, pending};
+}
+function distM(lat1, lon1, lat2, lon2){
+  const R = 6371000, toR = Math.PI/180;
+  const x = (lon2-lon1)*toR*Math.cos((lat1+lat2)/2*toR);
+  const y = (lat2-lat1)*toR;
+  return Math.sqrt(x*x + y*y) * R;
+}
+function isDup(name, lat, lon){
+  const n = name.trim().toLowerCase();
+  return state.places.some(p => p.name.trim().toLowerCase() === n && distM(p.lat, p.lon, lat, lon) < 150);
+}
+async function geocodeOne(name){
+  try{
+    const c = map.getCenter();
+    const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(name)}&limit=1&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`;
+    const r = await fetch(u);
+    if(r.ok){
+      const d = await r.json();
+      const f = (d.features || [])[0];
+      if(f && f.geometry){
+        const p = f.properties || {};
+        const parts = [p.street && (p.street + (p.housenumber? " "+p.housenumber : "")), p.postcode, p.city || p.county].filter(Boolean);
+        return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], address: parts.join(", ") };
+      }
+    }
+  }catch(e){ console.warn("geocodeOne:", e); }
+  return null;
+}
+function openTakeoutPreview(parsed){
+  const {items, pending} = parsed;
+  const MAXG = 100;
+  const toGeo = pending.slice(0, MAXG);
+  let selCat = (state.categories.find(c=>c.id==="altro") || state.categories[0]).id;
+  let selSt = "try";
+  const body = openSheet("Importa da Takeout");
+  body.innerHTML = `
+    <p class="stat" style="margin-bottom:14px">
+      Riconosciuti <b>${items.length}</b> posti con coordinate${pending.length ? ` e <b>${pending.length}</b> senza coordinate, che verranno cercati per nome${pending.length>MAXG ? ` (primi ${MAXG})` : ""}` : ""}.
+    </p>
+    <div class="field"><label>Categoria assegnata</label><div class="catpick" id="tk-cats"></div></div>
+    <div class="field"><label>Stato assegnato</label><div class="catpick" id="tk-st"></div></div>
+    <div class="btnrow">
+      <button class="btn ghost" id="tk-cancel">Annulla</button>
+      <button class="btn primary" id="tk-go">Avvia importazione</button>
+    </div>
+    <p class="stat" id="tk-prog" style="margin-top:12px"></p>
+  `;
+  const catsEl = body.querySelector("#tk-cats");
+  function paintC(){
+    catsEl.innerHTML = "";
+    state.categories.forEach(c=>{
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (selCat===c.id ? " on" : "");
+      b.style.setProperty("--c", c.color);
+      b.innerHTML = `${esc(c.emoji)} ${esc(c.name)}`;
+      b.addEventListener("click", ()=>{ selCat = c.id; paintC(); });
+      catsEl.appendChild(b);
+    });
+  }
+  paintC();
+  const stEl = body.querySelector("#tk-st");
+  function paintS(){
+    stEl.innerHTML = "";
+    STATUSES.forEach(s=>{
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (selSt===s.id ? " on" : "");
+      b.style.setProperty("--c", s.color);
+      b.innerHTML = `${s.icon} ${esc(s.name)}`;
+      b.addEventListener("click", ()=>{ selSt = s.id; paintS(); });
+      stEl.appendChild(b);
+    });
+  }
+  paintS();
+  body.querySelector("#tk-cancel").addEventListener("click", closeSheet);
+  body.querySelector("#tk-go").addEventListener("click", async ()=>{
+    const go = body.querySelector("#tk-go");
+    const prog = body.querySelector("#tk-prog");
+    go.disabled = true;
+    let added = 0, dup = 0, fail = 0;
+    const push = (it)=>{
+      state.places.push({
+        id: uid(), name: it.name, cat: selCat, status: selSt,
+        tags: [], notes: it.notes || "", address: it.address || "",
+        lat: it.lat, lon: it.lon, created: Date.now()
+      });
+      added++;
+    };
+    items.forEach(it=>{ isDup(it.name, it.lat, it.lon) ? dup++ : push(it); });
+    save(); renderMarkers(); renderChips();
+    for(let i=0; i<toGeo.length; i++){
+      prog.textContent = `Ricerca coordinate ${i+1}/${toGeo.length}: ${toGeo[i].name}`;
+      const g = await geocodeOne(toGeo[i].name);
+      if(g){
+        if(isDup(toGeo[i].name, g.lat, g.lon)) dup++;
+        else push({...toGeo[i], ...g});
+      }else fail++;
+      await new Promise(r=>setTimeout(r, 300));
+    }
+    save(); refresh();
+    const skipped = pending.length - toGeo.length;
+    prog.textContent = `Importazione completata: ${added} aggiunti, ${dup} duplicati ignorati, ${fail} non trovati${skipped ? `, ${skipped} oltre il limite di ${MAXG}` : ""}.`;
+    if(added && state.places.length){
+      const b = L.latLngBounds(state.places.map(p=>[p.lat, p.lon]));
+      map.fitBounds(b.pad(0.2), { maxZoom: 15 });
+    }
+    toast(`${added} posti importati`);
+    go.style.display = "none";
+    body.querySelector("#tk-cancel").textContent = "Chiudi";
+  });
+}
+document.getElementById("takeoutfile").addEventListener("change", e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    const parsed = parseTakeout(String(r.result || ""));
+    if(!parsed.items.length && !parsed.pending.length){
+      toast("Nessun posto riconosciuto nel file");
+      return;
+    }
+    openTakeoutPreview(parsed);
+  };
+  r.readAsText(f);
+  e.target.value = "";
+});
+
+/* ============ posizione ============ */
+let meMarker = null;
+document.getElementById("btn-locate").addEventListener("click", ()=>{
+  map.locate({ setView:true, maxZoom:16, enableHighAccuracy:true });
+});
+map.on("locationfound", e=>{
+  if(meMarker) map.removeLayer(meMarker);
+  meMarker = L.circleMarker(e.latlng, { radius:8, color:"#FFFFFF", weight:3, fillColor:"#2E6FE8", fillOpacity:1 }).addTo(map);
+});
+map.on("locationerror", ()=> toast("Posizione non disponibile: controlla i permessi"));
+
+/* ============ pulsanti ============ */
+document.getElementById("btn-list").addEventListener("click", openList);
+document.getElementById("btn-settings").addEventListener("click", openSettings);
+
+/* ============ avvio ============ */
+renderChips();
+renderMarkers();
+if(state.places.length){
+  const b = L.latLngBounds(state.places.map(p=>[p.lat,p.lon]));
+  map.fitBounds(b.pad(0.2), { maxZoom: 15 });
+}
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=> navigator.serviceWorker.register("sw.js").catch(()=>{}));
+}
+</script>
+</body>
+</html>
