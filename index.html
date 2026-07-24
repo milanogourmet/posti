@@ -291,10 +291,22 @@ input[type=file]{display:none}
 <script>
 "use strict";
 
-const APP_VERSION = "3.2";
+const APP_VERSION = "4.0";
 
 /* ============ stato e persistenza ============ */
 const LS_KEY = "posti.data.v1";
+const LS_GKEY = "posti.gkey.v1";
+
+/* chiave Google: archivio separato, non entra nei backup JSON */
+function gKey(){
+  try{ return localStorage.getItem(LS_GKEY) || ""; }catch(e){ return ""; }
+}
+function setGKey(v){
+  try{
+    if(v) localStorage.setItem(LS_GKEY, v);
+    else localStorage.removeItem(LS_GKEY);
+  }catch(e){ toast("Impossibile salvare la chiave"); }
+}
 const DEFAULT_CATS = [
   {id:"rist",  name:"Ristorante",  emoji:"🍝", color:"#D8432C"},
   {id:"pizza", name:"Pizzeria",    emoji:"🍕", color:"#E08914"},
@@ -456,7 +468,57 @@ async function onMapLongPress(latlng){
 }
 
 /* ============ geocoding ============ */
+/* --- Google Places (Text Search New): motore primario se la chiave è configurata --- */
+async function searchGoogle(q){
+  const key = gKey();
+  if(!key) return null;
+  const c = map.getCenter();
+  const body = {
+    textQuery: q,
+    languageCode: "it",
+    maxResultCount: 8,
+    locationBias: { circle: { center: { latitude: c.lat, longitude: c.lng }, radius: 30000 } }
+  };
+  const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": key,
+      // field mask minimale: mantiene la chiamata nella fascia gratuita
+      "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location"
+    },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){
+    let msg = "";
+    try{ const e = await r.json(); msg = (e.error && e.error.message) || ""; }catch(_){}
+    throw new Error(`HTTP ${r.status}${msg ? " – " + msg : ""}`);
+  }
+  const d = await r.json();
+  return (d.places || []).map(p=>({
+    name: (p.displayName && p.displayName.text) || "Senza nome",
+    address: p.formattedAddress || "",
+    lat: p.location && p.location.latitude,
+    lon: p.location && p.location.longitude,
+    src: "google"
+  })).filter(x=>Number.isFinite(x.lat) && Number.isFinite(x.lon));
+}
+
 async function searchPlaces(q){
+  if(gKey()){
+    try{
+      const g = await searchGoogle(q);
+      if(g && g.length) return g;
+      if(g) return [];   // Google ha risposto ma non conosce il locale
+    }catch(e){
+      console.warn("google:", e);
+      toast("Google non disponibile: uso OpenStreetMap");
+    }
+  }
+  return searchOSM(q);
+}
+
+async function searchOSM(q){
   const c = map.getCenter();
   const seen = new Set();
   const out = [];
@@ -528,7 +590,9 @@ const doSearch = debounce(async ()=>{
   const found = await searchPlaces(q);
   if(qInput.value.trim() !== q) return; // risposta superata
   if(!found.length){
-    resultsEl.innerHTML = `<div class="res hint">Nessun risultato. Non tutti i locali sono censiti su OpenStreetMap: prova ad aggiungere la città (es. “… Milano”), oppure tieni premuto sulla mappa nel punto esatto per salvarlo a mano.</div>`;
+    resultsEl.innerHTML = `<div class="res hint">${gKey()
+      ? "Nessun risultato su Google. Prova ad aggiungere la città, oppure tieni premuto sulla mappa nel punto esatto per salvarlo a mano."
+      : "Nessun risultato. Non tutti i locali sono censiti su OpenStreetMap: prova ad aggiungere la città (es. “… Milano”), tieni premuto sulla mappa per salvarlo a mano, oppure configura la ricerca Google in Impostazioni."}</div>`;
     return;
   }
   resultsEl.innerHTML = "";
@@ -979,12 +1043,24 @@ function openSettings(){
       <p class="stat" style="margin-top:10px">I dati restano solo su questo dispositivo. Esporta periodicamente un backup.<br>Formati supportati: "Saved Places.json" e CSV di Takeout, e file KML di Google My Maps.</p>
     </div>
     <div class="setsec">
+      <h3>Motore di ricerca</h3>
+      <p class="stat" style="margin:0 0 10px">Con una chiave Google Places la ricerca usa il database di Google Maps. Senza chiave usa OpenStreetMap.</p>
+      <div class="field">
+        <input type="text" id="s-gkey" value="${esc(gKey())}" placeholder="Incolla qui la chiave (AIza…)" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="btnrow">
+        <button class="btn ghost" id="s-gclear">Rimuovi</button>
+        <button class="btn primary" id="s-gsave">Salva e prova</button>
+      </div>
+      <p class="stat" id="s-gstat" style="margin-top:10px">${gKey() ? "Chiave configurata: ricerca via Google Places." : "Nessuna chiave: ricerca via OpenStreetMap."}</p>
+    </div>
+    <div class="setsec">
       <h3>Archivio</h3>
       <p class="stat">${nPlaces} ${nPlaces===1?"posto salvato":"posti salvati"} · ${nTags} tag · ${state.categories.length} categorie</p>
       <div class="btnrow" style="margin-top:10px">
         <button class="btn ghost" id="s-update">Cerca aggiornamenti</button>
       </div>
-      <p class="stat" id="s-ver">MilanoGourmet v${APP_VERSION} · Mappa © OpenStreetMap · Ricerca: Photon / Nominatim</p>
+      <p class="stat" id="s-ver">MilanoGourmet v${APP_VERSION} · Mappa © OpenStreetMap · Ricerca: ${gKey() ? "Google Places" : "Photon / Nominatim"}</p>
     </div>
   `;
   const catsEl = body.querySelector("#s-cats");
@@ -1055,6 +1131,46 @@ function openSettings(){
   body.querySelector("#s-imp").addEventListener("click", ()=> document.getElementById("importfile").click());
   body.querySelector("#s-tko").addEventListener("click", ()=> document.getElementById("takeoutfile").click());
 
+  /* --- chiave Google Places --- */
+  const gInp = body.querySelector("#s-gkey");
+  const gStat = body.querySelector("#s-gstat");
+  body.querySelector("#s-gclear").addEventListener("click", ()=>{
+    setGKey("");
+    gInp.value = "";
+    gStat.textContent = "Chiave rimossa: ricerca via OpenStreetMap.";
+    toast("Chiave rimossa");
+  });
+  body.querySelector("#s-gsave").addEventListener("click", async ()=>{
+    const k = gInp.value.trim();
+    if(!k){ toast("Incolla prima la chiave"); return; }
+    setGKey(k);
+    gStat.textContent = "Verifica in corso…";
+    try{
+      const res = await searchGoogle("Duomo di Milano");
+      if(res && res.length){
+        gStat.textContent = `Funziona: Google ha risposto (${res[0].name}). Ricerca via Google Places.`;
+        toast("Chiave attiva");
+      }else{
+        gStat.textContent = "La chiave risponde ma non ha restituito risultati. Riprova con un'altra ricerca.";
+      }
+    }catch(e){
+      const m = String(e.message || e);
+      let diag = m;
+      if(/403/.test(m) && /referer|referrer|API_KEY_HTTP/i.test(m))
+        diag = "La chiave rifiuta questo sito. In Google Cloud, tra le restrizioni per siti web aggiungi: https://milanogourmet.github.io/*";
+      else if(/403/.test(m) && /SERVICE_DISABLED|not been used|disabled/i.test(m))
+        diag = "L'API non è attiva. In Google Cloud abilita “Places API (New)”.";
+      else if(/400/.test(m) && /API key not valid/i.test(m))
+        diag = "Chiave non valida: controlla di averla copiata per intero.";
+      else if(/429/.test(m))
+        diag = "Quota giornaliera esaurita. Riprova domani o alza la quota.";
+      else if(/Failed to fetch|NetworkError|Load failed/i.test(m))
+        diag = "Nessuna risposta da Google (rete assente o richiesta bloccata dal browser).";
+      gStat.textContent = "Non funziona — " + diag;
+      toast("Verifica fallita");
+    }
+  });
+
   /* la riga versione si autodichiara leggendo la cache realmente attiva */
   (async ()=>{
     const el = body.querySelector("#s-ver");
@@ -1062,7 +1178,7 @@ function openSettings(){
     try{
       const keys = await caches.keys();
       const shell = keys.find(k=>k.startsWith("posti-shell-"));
-      if(shell) el.textContent = `MilanoGourmet v${APP_VERSION} · cache ${shell} · Mappa © OpenStreetMap · Ricerca: Photon / Nominatim`;
+      if(shell) el.textContent = `MilanoGourmet v${APP_VERSION} · cache ${shell} · Mappa © OpenStreetMap · Ricerca: ${gKey() ? "Google Places" : "Photon / Nominatim"}`;
     }catch(e){ /* cache non accessibile: resta l'etichetta base */ }
   })();
 
