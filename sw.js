@@ -1,8 +1,8 @@
 /* Posti — service worker v1 */
 "use strict";
 
-const SHELL = "posti-shell-v5";
-const TILES = "posti-tiles-v5";
+const SHELL = "posti-shell-v6";
+const TILES = "posti-tiles-v6";
 const TILE_LIMIT = 300;
 
 const SHELL_ASSETS = [
@@ -50,7 +50,7 @@ self.addEventListener("fetch", e => {
   if (url.hostname.includes("photon.komoot.io") || url.hostname.includes("nominatim")) return;
 
   // tile OSM: stale-while-revalidate con limite
-  if (url.hostname.endsWith("tile.openstreetmap.org") || url.hostname.endsWith("basemaps.cartocdn.com")) {
+  if (url.hostname.endsWith("tile.openstreetmap.org")) {
     e.respondWith(
       caches.open(TILES).then(async cache => {
         const cached = await cache.match(e.request);

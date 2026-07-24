@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>MilanoGourmet</title>
 <meta name="description" content="La tua mappa personale di locali, con categorie e tag.">
-<meta name="theme-color" content="#FBFAF7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#17191F" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#FBFAF7">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png?v=3">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -39,28 +38,6 @@ body{font-family:var(--font-ui);color:var(--ink);background:var(--paper)}
 #map{position:fixed;inset:0;z-index:1;background:#E9E6DE}
 .leaflet-control-attribution{font-size:9px;opacity:.75}
 button{font-family:var(--font-ui)}
-
-/* ---- dark mode automatica ---- */
-@media (prefers-color-scheme: dark){
-  :root{
-    --paper:#17191F;
-    --ink:#ECEAE4;
-    --ink-2:#9AA0AD;
-    --line:#2E323C;
-    --neutral:#6A7386;
-    --white:#22252E;
-    --shadow:0 6px 24px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);
-  }
-  #map{background:#101216}
-  .pin{background:#FFFFFF}
-  .bottombar{background:linear-gradient(to top, rgba(23,25,31,.96), rgba(23,25,31,0))}
-  .toast{background:#ECEAE4;color:#20242E}
-  .sheet header .x{background:#2E323C;color:var(--ink)}
-  .results .res:active, .placerow:active{background:#2A2E38}
-  .tag{background:#2E323C;color:var(--ink)}
-  .leaflet-control-attribution{background:rgba(23,25,31,.7);color:#9AA0AD}
-  .leaflet-control-attribution a{color:#B9C0CC}
-}
 
 /* ---- cluster marker ---- */
 .cluster{
@@ -391,27 +368,10 @@ function fmtDist(m){
 /* ============ mappa ============ */
 const map = L.map("map", { zoomControl:false, attributionControl:true })
   .setView([45.4642, 9.1900], 13); // Milano
-
-/* tile: chiare (OSM) o scure (CARTO) secondo il tema di sistema */
-const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
-let tileLayer = null;
-function setTiles(){
-  if(tileLayer) map.removeLayer(tileLayer);
-  if(darkMq.matches){
-    tileLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 19, subdomains: "abcd",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    });
-  }else{
-    tileLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    });
-  }
-  tileLayer.addTo(map);
-}
-setTiles();
-if(darkMq.addEventListener) darkMq.addEventListener("change", setTiles);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
 
 /* cluster dei marker (fallback a layerGroup se il plugin non carica) */
 const markersLayer = (typeof L.markerClusterGroup === "function"
@@ -1007,7 +967,7 @@ function openSettings(){
     <div class="setsec">
       <h3>Archivio</h3>
       <p class="stat">${nPlaces} ${nPlaces===1?"posto salvato":"posti salvati"} · ${nTags} tag · ${state.categories.length} categorie</p>
-      <p class="stat">MilanoGourmet v3 · Mappa © OpenStreetMap / CARTO · Ricerca: Photon / Nominatim</p>
+      <p class="stat">MilanoGourmet v3.1 · Mappa © OpenStreetMap · Ricerca: Photon / Nominatim</p>
     </div>
   `;
   const catsEl = body.querySelector("#s-cats");
