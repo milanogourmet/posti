@@ -1,17 +1,17 @@
 /* Posti — service worker v1 */
 "use strict";
 
-const SHELL = "posti-shell-v9";
-const TILES = "posti-tiles-v9";
+const SHELL = "posti-shell-v12";
+const TILES = "posti-tiles-v12";
 const TILE_LIMIT = 300;
 
 const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./icon-180.png",
+  "./icon-192.png?v=3",
+  "./icon-512.png?v=3",
+  "./icon-180.png?v=3",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
   "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css",
   "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css",

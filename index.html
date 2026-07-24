@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>MilanoGourmet</title>
 <meta name="description" content="La tua mappa personale di locali, con categorie e tag.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self' https://photon.komoot.io https://nominatim.openstreetmap.org https://places.googleapis.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="theme-color" content="#FBFAF7">
+<meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png?v=3">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,8 +16,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" crossorigin="">
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" integrity="sha384-pmjIAcz2bAn0xukfxADbZIb3t8oRT9Sv0rvO+BR5Csr6Dhqq+nZs59P0pPKQJkEV" crossorigin="anonymous">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" integrity="sha384-wgw+aLYNQ7dlhK47ZPK7FRACiq7ROZwgFNg0m04avm4CaXS+Z9Y7nMu8yNjBKYC+" crossorigin="anonymous">
 <style>
 :root{
   --paper:#FBFAF7;
@@ -35,7 +37,7 @@
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
 body{font-family:var(--font-ui);color:var(--ink);background:var(--paper)}
-#map{position:fixed;inset:0;z-index:1;background:#E9E6DE}
+#map{position:fixed;inset:0;z-index:1;background:#E9E6DE;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .leaflet-control-attribution{font-size:9px;opacity:.75}
 button{font-family:var(--font-ui)}
 
@@ -119,6 +121,9 @@ button{font-family:var(--font-ui)}
   display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);
 }
 .fab:active{transform:scale(.94)}
+.fab.busy{color:var(--ink-2);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){ .fab.busy{animation:none;opacity:.6} }
 
 /* ---- chips categorie ---- */
 .bottombar{
@@ -258,7 +263,7 @@ input[type=file]{display:none}
 <div class="topbar">
   <div class="searchbox">
     <span class="brand">Milano</span>
-    <input id="q" type="text" placeholder="Cerca un locale o un indirizzo…" autocomplete="off" enterkeyhint="search">
+    <input id="q" type="text" placeholder="Cerca, o incolla coordinate…" autocomplete="off" enterkeyhint="search">
     <button class="clear" id="qclear" aria-label="Pulisci ricerca">✕</button>
   </div>
   <div class="results" id="results"></div>
@@ -287,11 +292,11 @@ input[type=file]{display:none}
 <input type="file" id="takeoutfile" accept=".json,.geojson,.csv,.kml,.xml,application/json,text/csv,application/geo+json,application/vnd.google-earth.kml+xml,application/xml,text/xml">
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" integrity="sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr" crossorigin="anonymous"></script>
 <script>
 "use strict";
 
-const APP_VERSION = "4.0";
+const APP_VERSION = "4.3";
 
 /* ============ stato e persistenza ============ */
 const LS_KEY = "posti.data.v1";
@@ -325,16 +330,61 @@ const STATUSES = [
 ];
 const stById = id => STATUSES.find(s=>s.id===id) || STATUSES[0];
 
+function sstr(v, max){ return typeof v === "string" ? v.trim().slice(0, max) : ""; }
+function safeColor(c){
+  const t = String(c || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(t) || /^#[0-9a-fA-F]{3}$/.test(t) ? t : "#5B6472";
+}
+/* Normalizza qualunque stato (archivio locale o backup importato).
+   Scarta il non riparabile, ripara il resto, non si fida di nulla. */
+function sanitizeState(d){
+  if(!d || typeof d !== "object") return { ok:false };
+  if(!Array.isArray(d.places) && !Array.isArray(d.categories)) return { ok:false };
+  const out = { places:[], categories:[], settings:{} };
+  const catIds = new Set();
+  (Array.isArray(d.categories) ? d.categories : []).forEach(c=>{
+    if(!c || typeof c !== "object") return;
+    let id = sstr(c.id, 24) || uid();
+    while(catIds.has(id)) id = uid();
+    catIds.add(id);
+    out.categories.push({ id, name: sstr(c.name, 40) || "Categoria",
+      emoji: sstr(c.emoji, 16) || "📍", color: safeColor(c.color) });
+  });
+  if(!out.categories.length) out.categories = DEFAULT_CATS.map(c=>({...c}));
+  let dropped = 0;
+  const pIds = new Set();
+  (Array.isArray(d.places) ? d.places : []).forEach(p=>{
+    if(!p || typeof p !== "object"){ dropped++; return; }
+    const lat = +p.lat, lon = +p.lon;
+    const name = sstr(p.name, 200);
+    if(!name || !validCoords(lat, lon)){ dropped++; return; }
+    let id = sstr(p.id, 32) || uid();
+    while(pIds.has(id)) id = uid();
+    pIds.add(id);
+    out.places.push({
+      id, name, lat, lon,
+      cat: sstr(p.cat, 24) || out.categories[0].id,
+      status: ["try","visited","fav"].includes(p.status) ? p.status : "try",
+      tags: Array.isArray(p.tags)
+        ? [...new Set(p.tags.filter(t=>typeof t==="string").map(t=>t.trim().slice(0,40)).filter(Boolean))].slice(0,30)
+        : [],
+      notes: sstr(p.notes, 5000),
+      address: sstr(p.address, 300),
+      created: Number.isFinite(+p.created) ? +p.created : Date.now()
+    });
+  });
+  const srt = d.settings && typeof d.settings === "object" ? d.settings.sort : null;
+  out.settings = { sort: ["name","dist","recent"].includes(srt) ? srt : "name" };
+  return { ok:true, state: out, dropped };
+}
+
 let state = load();
 function load(){
   try{
     const raw = localStorage.getItem(LS_KEY);
     if(raw){
-      const d = JSON.parse(raw);
-      if(Array.isArray(d.places) && Array.isArray(d.categories)){
-        d.places.forEach(p=>{ if(!p.status) p.status = "try"; }); // migrazione v1 → v2
-        return d;
-      }
+      const sd = sanitizeState(JSON.parse(raw));
+      if(sd.ok) return sd.state;
     }
   }catch(e){ console.warn("load:", e); }
   return { places:[], categories: DEFAULT_CATS.map(c=>({...c})), settings:{} };
@@ -468,6 +518,24 @@ async function onMapLongPress(latlng){
 }
 
 /* ============ geocoding ============ */
+/* --- coordinate o link mappa incollati nella barra di ricerca --- */
+function coordsFromText(t){
+  const s = String(t||"").trim();
+  const c = coordsFromUrl(s);            // link Google Maps con coordinate
+  if(c && validCoords(c.lat, c.lon)) return c;
+  // coppia di coordinate: "37.4438, 25.3245" (decimali obbligatori)
+  const m = s.match(/^\(?\s*(-?\d{1,2}\.\d+)\s*[,;]?\s+?\s*(-?\d{1,3}\.\d+)\s*\)?$/)
+         || s.match(/^\(?\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*\)?$/);
+  if(m){
+    const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+    if(validCoords(lat, lon)) return { lat, lon };
+  }
+  return null;
+}
+function isShortMapLink(t){
+  return /(maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(String(t||""));
+}
+
 /* --- Google Places (Text Search New): motore primario se la chiave è configurata --- */
 async function searchGoogle(q){
   const key = gKey();
@@ -505,6 +573,16 @@ async function searchGoogle(q){
 }
 
 async function searchPlaces(q){
+  // coordinate o link con coordinate: risposta immediata, nessun motore coinvolto
+  const coord = coordsFromText(q);
+  if(coord){
+    const addr = await reverseGeocode(coord.lat, coord.lon);
+    return [{
+      name: addr ? addr.split(",")[0].trim() : "Posizione",
+      address: addr || `${coord.lat}, ${coord.lon}`,
+      lat: coord.lat, lon: coord.lon, src: "coord"
+    }];
+  }
   if(gKey()){
     try{
       const g = await searchGoogle(q);
@@ -585,14 +663,18 @@ const doSearch = debounce(async ()=>{
   const q = qInput.value.trim();
   qClear.style.display = q ? "block" : "none";
   if(q.length < 3){ resultsEl.style.display = "none"; resultsEl.innerHTML = ""; return; }
-  resultsEl.innerHTML = `<div class="res hint">Ricerca in corso…</div>`;
   resultsEl.style.display = "block";
+  if(isShortMapLink(q)){
+    resultsEl.innerHTML = `<div class="res hint">Questo \u00e8 un link Google Maps abbreviato e non contiene le coordinate. Aprilo in Safari: verr\u00e0 trasformato nell\u2019indirizzo completo, che puoi copiare dalla barra e incollare qui.</div>`;
+    return;
+  }
+  resultsEl.innerHTML = `<div class="res hint">Ricerca in corso\u2026</div>`;
   const found = await searchPlaces(q);
   if(qInput.value.trim() !== q) return; // risposta superata
   if(!found.length){
     resultsEl.innerHTML = `<div class="res hint">${gKey()
       ? "Nessun risultato su Google. Prova ad aggiungere la città, oppure tieni premuto sulla mappa nel punto esatto per salvarlo a mano."
-      : "Nessun risultato. Non tutti i locali sono censiti su OpenStreetMap: prova ad aggiungere la città (es. “… Milano”), tieni premuto sulla mappa per salvarlo a mano, oppure configura la ricerca Google in Impostazioni."}</div>`;
+      : "Nessun risultato: il locale potrebbe non essere censito su OpenStreetMap. Puoi incollare qui le sue coordinate (es. 37.4438, 25.3245) prese da Google Maps, oppure tenere premuto sulla mappa nel punto esatto."}</div>`;
     return;
   }
   resultsEl.innerHTML = "";
@@ -613,6 +695,13 @@ const doSearch = debounce(async ()=>{
 }, 380);
 
 qInput.addEventListener("input", doSearch);
+qInput.addEventListener("keydown", e=>{
+  if(e.key === "Enter"){
+    e.preventDefault();
+    const first = resultsEl.querySelector("button.res");
+    if(first) first.click(); else qInput.blur();
+  }
+});
 qClear.addEventListener("click", ()=>{
   qInput.value = ""; qClear.style.display = "none";
   resultsEl.style.display = "none"; resultsEl.innerHTML = "";
@@ -812,6 +901,9 @@ function openForm(prefill, editId=null){
       lat: data.lat, lon: data.lon,
       created: editing ? editing.created : Date.now()
     };
+    if(!editing && isDup(rec.name, rec.lat, rec.lon)){
+      if(!confirm(`“${rec.name}” sembra già salvato qui vicino. Salvare comunque?`)) return;
+    }
     if(editing){
       const i = state.places.findIndex(p=>p.id===editing.id);
       state.places[i] = rec;
@@ -869,7 +961,7 @@ function openDetail(id){
   paintDSt();
 
   body.querySelector("#d-maps").addEventListener("click", ()=>{
-    window.open(`https://maps.apple.com/?daddr=${p.lat},${p.lon}&q=${encodeURIComponent(p.name)}`, "_blank");
+    window.open(`https://maps.apple.com/?daddr=${p.lat},${p.lon}&q=${encodeURIComponent(p.name)}`, "_blank", "noopener,noreferrer");
   });
   body.querySelector("#d-edit").addEventListener("click", ()=> openForm({}, p.id));
   body.querySelector("#d-del").addEventListener("click", ()=>{
@@ -908,7 +1000,7 @@ function openList(){
     save();
     if(id === "dist" && !lastPos){
       toast("Attivo la posizione…");
-      map.locate({ setView:false, enableHighAccuracy:true });
+      locateMe(false);
     }
     shown = CHUNK;
     paintSort(); paint();
@@ -944,6 +1036,7 @@ function openList(){
   }
 
   function paint(){
+    if(!itemsEl.isConnected) return;
     const q = inp.value.trim().toLowerCase();
     let list = visiblePlaces();
     if(q) list = list.filter(p =>
@@ -1026,7 +1119,7 @@ function openSettings(){
       <div id="s-cats"></div>
       <div class="newcat" style="margin-top:10px">
         <input type="text" id="s-cn" placeholder="Nuova categoria" autocomplete="off">
-        <input type="text" id="s-ce" class="emoji" placeholder="🙂" maxlength="4" autocomplete="off">
+        <input type="text" id="s-ce" class="emoji" placeholder="🙂" maxlength="8" autocomplete="off">
         <input type="color" id="s-cc" value="#D8432C" aria-label="Colore categoria">
         <button class="add" id="s-add" aria-label="Aggiungi categoria">+</button>
       </div>
@@ -1075,7 +1168,7 @@ function openSettings(){
         row.style.marginBottom = "7px";
         row.innerHTML = `
           <input type="text" class="e-name" value="${esc(c.name)}" autocomplete="off">
-          <input type="text" class="e-emoji emoji" value="${esc(c.emoji)}" maxlength="4" autocomplete="off">
+          <input type="text" class="e-emoji emoji" value="${esc(c.emoji)}" maxlength="8" autocomplete="off">
           <input type="color" class="e-color" value="${esc(c.color)}" aria-label="Colore categoria">
           <button class="add e-save" aria-label="Salva modifiche">✓</button>
         `;
@@ -1083,8 +1176,8 @@ function openSettings(){
           const name = row.querySelector(".e-name").value.trim();
           if(!name){ toast("Il nome non può essere vuoto"); return; }
           c.name = name;
-          c.emoji = row.querySelector(".e-emoji").value.trim() || "📍";
-          c.color = row.querySelector(".e-color").value;
+          c.emoji = sstr(row.querySelector(".e-emoji").value, 16) || "📍";
+          c.color = safeColor(row.querySelector(".e-color").value);
           editingCat = null;
           refresh(); paint();
           toast("Categoria aggiornata");
@@ -1122,7 +1215,7 @@ function openSettings(){
     const emoji = body.querySelector("#s-ce").value.trim() || "📍";
     const color = body.querySelector("#s-cc").value;
     if(!name){ toast("Dai un nome alla categoria"); return; }
-    state.categories.push({ id: uid(), name, emoji, color });
+    state.categories.push({ id: uid(), name: sstr(name, 40), emoji: sstr(emoji, 16) || "📍", color: safeColor(color) });
     body.querySelector("#s-cn").value = ""; body.querySelector("#s-ce").value = "";
     refresh(); paint();
     toast("Categoria aggiunta");
@@ -1220,11 +1313,12 @@ document.getElementById("importfile").addEventListener("change", e=>{
   const r = new FileReader();
   r.onload = ()=>{
     try{
-      const d = JSON.parse(r.result);
-      if(!Array.isArray(d.places) || !Array.isArray(d.categories)) throw new Error("formato");
-      if(!confirm(`Importare ${d.places.length} posti? I dati attuali verranno sostituiti.`)) return;
-      state = d; save();
-      filters.cats.clear(); filters.tags.clear();
+      const sd = sanitizeState(JSON.parse(r.result));
+      if(!sd.ok) throw new Error("formato");
+      const extra = sd.dropped ? ` (${sd.dropped} voci scartate perché non valide)` : "";
+      if(!confirm(`Importare ${sd.state.places.length} posti${extra}? I dati attuali verranno sostituiti.`)) return;
+      state = sd.state; save();
+      filters.cats.clear(); filters.tags.clear(); filters.status.clear();
       refresh(); closeSheet();
       toast("Backup importato");
     }catch(err){ toast("File non valido"); }
@@ -1246,7 +1340,12 @@ function parseKML(text){
     const name = (nameEl ? nameEl.textContent : "").trim();
     if(!name) continue;
     const descEl = pm.getElementsByTagName("description")[0];
-    let notes = (descEl ? descEl.textContent : "").replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+    let notes = (descEl ? descEl.textContent : "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/gi, " ")
+      .replace(/&[a-z]+;/gi, " ")
+      .replace(/\s+/g, " ").trim();
     if(notes.length > 280) notes = notes.slice(0, 280) + "…";
     const pt = pm.getElementsByTagName("Point")[0];
     if(pt){
@@ -1428,6 +1527,7 @@ function openTakeoutPreview(parsed){
     items.forEach(it=>{ isDup(it.name, it.lat, it.lon) ? dup++ : push(it); });
     save(); renderMarkers(); renderChips();
     for(let i=0; i<toGeo.length; i++){
+      if(!body.isConnected) break;
       prog.textContent = `Ricerca coordinate ${i+1}/${toGeo.length}: ${toGeo[i].name}`;
       const g = await geocodeOne(toGeo[i].name);
       if(g){
@@ -1466,16 +1566,63 @@ document.getElementById("takeoutfile").addEventListener("change", e=>{
 
 /* ============ posizione ============ */
 let meMarker = null;
+let accCircle = null;
 let lastPos = null;
-document.getElementById("btn-locate").addEventListener("click", ()=>{
-  map.locate({ setView:true, maxZoom:16, enableHighAccuracy:true });
-});
-map.on("locationfound", e=>{
-  lastPos = e.latlng;
-  if(meMarker) map.removeLayer(meMarker);
-  meMarker = L.circleMarker(e.latlng, { radius:8, color:"#FFFFFF", weight:3, fillColor:"#2E6FE8", fillOpacity:1 }).addTo(map);
-});
-map.on("locationerror", ()=> toast("Posizione non disponibile: controlla i permessi"));
+let locating = false;
+const btnLocate = document.getElementById("btn-locate");
+
+function setLocBusy(on){
+  locating = on;
+  btnLocate.classList.toggle("busy", on);
+  btnLocate.textContent = on ? "◌" : "➤";
+}
+
+function locateMe(center){
+  if(locating) return;
+  if(!navigator.geolocation){ toast("Questo browser non supporta la geolocalizzazione"); return; }
+  if(!window.isSecureContext){ toast("La posizione richiede una connessione sicura (https)"); return; }
+  setLocBusy(true);
+
+  const onOk = pos => {
+    setLocBusy(false);
+    lastPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+    if(meMarker) map.removeLayer(meMarker);
+    if(accCircle) map.removeLayer(accCircle);
+    meMarker = L.circleMarker(lastPos, { radius:8, color:"#FFFFFF", weight:3, fillColor:"#2E6FE8", fillOpacity:1 }).addTo(map);
+    const acc = pos.coords.accuracy || 0;
+    if(acc > 60){
+      accCircle = L.circle(lastPos, { radius:acc, color:"#2E6FE8", weight:1, fillColor:"#2E6FE8", fillOpacity:.10 }).addTo(map);
+    }
+    if(center) map.setView(lastPos, Math.max(map.getZoom(), 16));
+    map.fire("locationfound", { latlng: lastPos, accuracy: acc });
+  };
+
+  const onErr = (err, secondo) => {
+    // timeout o posizione non disponibile: riprova senza alta precisione (rete invece di GPS)
+    if((err.code === 3 || err.code === 2) && !secondo){
+      navigator.geolocation.getCurrentPosition(onOk, e => onErr(e, true),
+        { enableHighAccuracy:false, timeout:20000, maximumAge:300000 });
+      return;
+    }
+    setLocBusy(false);
+    let msg;
+    if(err.code === 1){
+      msg = "Permesso negato. Impostazioni iPhone → Privacy e sicurezza → Localizzazione → Safari (o MilanoGourmet) → Durante l'uso";
+    }else if(err.code === 2){
+      msg = "Posizione non rilevabile: prova all'aperto o verifica che la Localizzazione sia attiva";
+    }else if(err.code === 3){
+      msg = "Tempo scaduto: segnale troppo debole, riprova";
+    }else{
+      msg = "Posizione non disponibile";
+    }
+    toast(msg);
+  };
+
+  navigator.geolocation.getCurrentPosition(onOk, e => onErr(e, false),
+    { enableHighAccuracy:true, timeout:12000, maximumAge:60000 });
+}
+
+btnLocate.addEventListener("click", ()=> locateMe(true));
 
 /* ============ pulsanti ============ */
 document.getElementById("btn-list").addEventListener("click", openList);
