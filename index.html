@@ -291,6 +291,8 @@ input[type=file]{display:none}
 <script>
 "use strict";
 
+const APP_VERSION = "3.2";
+
 /* ============ stato e persistenza ============ */
 const LS_KEY = "posti.data.v1";
 const DEFAULT_CATS = [
@@ -979,7 +981,10 @@ function openSettings(){
     <div class="setsec">
       <h3>Archivio</h3>
       <p class="stat">${nPlaces} ${nPlaces===1?"posto salvato":"posti salvati"} · ${nTags} tag · ${state.categories.length} categorie</p>
-      <p class="stat">MilanoGourmet v3.2 · Mappa © OpenStreetMap · Ricerca: Photon / Nominatim</p>
+      <div class="btnrow" style="margin-top:10px">
+        <button class="btn ghost" id="s-update">Cerca aggiornamenti</button>
+      </div>
+      <p class="stat" id="s-ver">MilanoGourmet v${APP_VERSION} · Mappa © OpenStreetMap · Ricerca: Photon / Nominatim</p>
     </div>
   `;
   const catsEl = body.querySelector("#s-cats");
@@ -1049,6 +1054,39 @@ function openSettings(){
   body.querySelector("#s-exp").addEventListener("click", exportJSON);
   body.querySelector("#s-imp").addEventListener("click", ()=> document.getElementById("importfile").click());
   body.querySelector("#s-tko").addEventListener("click", ()=> document.getElementById("takeoutfile").click());
+
+  /* la riga versione si autodichiara leggendo la cache realmente attiva */
+  (async ()=>{
+    const el = body.querySelector("#s-ver");
+    if(!el || !window.caches) return;
+    try{
+      const keys = await caches.keys();
+      const shell = keys.find(k=>k.startsWith("posti-shell-"));
+      if(shell) el.textContent = `MilanoGourmet v${APP_VERSION} · cache ${shell} · Mappa © OpenStreetMap · Ricerca: Photon / Nominatim`;
+    }catch(e){ /* cache non accessibile: resta l'etichetta base */ }
+  })();
+
+  const upd = body.querySelector("#s-update");
+  if(upd) upd.addEventListener("click", async ()=>{
+    upd.disabled = true;
+    upd.textContent = "Aggiornamento…";
+    try{
+      if(window.caches){
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k=>caches.delete(k)));
+      }
+      if(navigator.serviceWorker){
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r=>r.unregister()));
+      }
+      toast("Cache svuotata: riavvio…");
+      setTimeout(()=>location.reload(true), 700);
+    }catch(e){
+      upd.disabled = false;
+      upd.textContent = "Cerca aggiornamenti";
+      toast("Aggiornamento non riuscito");
+    }
+  });
 }
 
 function exportJSON(){

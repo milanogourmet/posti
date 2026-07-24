@@ -2,7 +2,7 @@
 "use strict";
 
 const SHELL = "posti-shell-v8";
-const TILES = "posti-tiles-v6";
+const TILES = "posti-tiles-v8";
 const TILE_LIMIT = 300;
 
 const SHELL_ASSETS = [
