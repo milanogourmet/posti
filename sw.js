@@ -1,8 +1,8 @@
 /* Posti — service worker v1 */
 "use strict";
 
-const SHELL = "posti-shell-v3";
-const TILES = "posti-tiles-v3";
+const SHELL = "posti-shell-v5";
+const TILES = "posti-tiles-v5";
 const TILE_LIMIT = 300;
 
 const SHELL_ASSETS = [
@@ -13,6 +13,9 @@ const SHELL_ASSETS = [
   "./icon-512.png",
   "./icon-180.png",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+  "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css",
+  "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css",
+  "https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
 ];
 
@@ -47,7 +50,7 @@ self.addEventListener("fetch", e => {
   if (url.hostname.includes("photon.komoot.io") || url.hostname.includes("nominatim")) return;
 
   // tile OSM: stale-while-revalidate con limite
-  if (url.hostname.endsWith("tile.openstreetmap.org")) {
+  if (url.hostname.endsWith("tile.openstreetmap.org") || url.hostname.endsWith("basemaps.cartocdn.com")) {
     e.respondWith(
       caches.open(TILES).then(async cache => {
         const cached = await cache.match(e.request);

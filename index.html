@@ -5,15 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>MilanoGourmet</title>
 <meta name="description" content="La tua mappa personale di locali, con categorie e tag.">
-<meta name="theme-color" content="#FBFAF7">
+<meta name="theme-color" content="#FBFAF7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17191F" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="apple-touch-icon" href="icon-180.png?v=3">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="MilanoGourmet">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" crossorigin="">
 <style>
 :root{
   --paper:#FBFAF7;
@@ -21,6 +24,7 @@
   --ink-2:#5B6472;
   --line:#E5E2DA;
   --bitter:#D8432C;
+  --neutral:#20242E;
   --white:#FFFFFF;
   --r:14px;
   --shadow:0 6px 24px rgba(32,36,46,.14), 0 1px 3px rgba(32,36,46,.10);
@@ -35,6 +39,38 @@ body{font-family:var(--font-ui);color:var(--ink);background:var(--paper)}
 #map{position:fixed;inset:0;z-index:1;background:#E9E6DE}
 .leaflet-control-attribution{font-size:9px;opacity:.75}
 button{font-family:var(--font-ui)}
+
+/* ---- dark mode automatica ---- */
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#17191F;
+    --ink:#ECEAE4;
+    --ink-2:#9AA0AD;
+    --line:#2E323C;
+    --neutral:#6A7386;
+    --white:#22252E;
+    --shadow:0 6px 24px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);
+  }
+  #map{background:#101216}
+  .pin{background:#FFFFFF}
+  .bottombar{background:linear-gradient(to top, rgba(23,25,31,.96), rgba(23,25,31,0))}
+  .toast{background:#ECEAE4;color:#20242E}
+  .sheet header .x{background:#2E323C;color:var(--ink)}
+  .results .res:active, .placerow:active{background:#2A2E38}
+  .tag{background:#2E323C;color:var(--ink)}
+  .leaflet-control-attribution{background:rgba(23,25,31,.7);color:#9AA0AD}
+  .leaflet-control-attribution a{color:#B9C0CC}
+}
+
+/* ---- cluster marker ---- */
+.cluster{
+  width:42px;height:42px;border-radius:50%;
+  background:var(--white);border:3px solid var(--bitter);
+  box-shadow:0 2px 10px rgba(0,0,0,.30);
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;color:var(--ink);
+}
+.cluster.big{border-color:#9C2F1D}
 
 /* ---- pin tondo (signature) ---- */
 .pin{
@@ -124,8 +160,8 @@ button{font-family:var(--font-ui)}
   font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;white-space:nowrap;
 }
 .chip .dot{width:10px;height:10px;border-radius:50%;background:var(--c,var(--ink-2))}
-.chip.on{border-color:var(--c,var(--ink));background:var(--c,var(--ink));color:var(--white)}
-.chip.on .dot{background:var(--white)}
+.chip.on{border-color:var(--c,var(--ink));background:var(--c,var(--ink));color:#FFFFFF}
+.chip.on .dot{background:#FFFFFF}
 .chip .n{font-weight:500;opacity:.7;font-size:12.5px}
 .chip.tagchip.on{background:var(--ink);border-color:var(--ink)}
 
@@ -185,6 +221,17 @@ button{font-family:var(--font-ui)}
 /* ---- lista ---- */
 .listsearch{margin-bottom:10px}
 .listsearch input{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--white);padding:10px 12px;font-size:16px;outline:none}
+.sortrow{display:flex;gap:8px;margin-bottom:12px;align-items:center}
+.sortrow .lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.sortrow .chip{height:32px;padding:0 11px;font-size:13px}
+.loadmore{
+  display:block;width:100%;border:1.5px dashed var(--line);background:transparent;
+  color:var(--ink-2);border-radius:12px;padding:12px;font-size:14px;font-weight:600;
+  cursor:pointer;margin-top:4px;
+}
+.loadmore:active{background:var(--white)}
+.pdist{color:var(--ink-2);font-weight:600}
+.catrow .edit{border:0;background:transparent;font-size:15px;cursor:pointer;padding:4px;color:var(--ink-2)}
 .placerow{
   display:flex;align-items:center;gap:12px;width:100%;text-align:left;
   background:var(--white);border:1px solid var(--line);border-radius:12px;
@@ -260,9 +307,10 @@ input[type=file]{display:none}
 
 <div class="toast" id="toast" role="status"></div>
 <input type="file" id="importfile" accept="application/json,.json">
-<input type="file" id="takeoutfile" accept=".json,.geojson,.csv,application/json,text/csv,application/geo+json">
+<input type="file" id="takeoutfile" accept=".json,.geojson,.csv,.kml,.xml,application/json,text/csv,application/geo+json,application/vnd.google-earth.kml+xml,application/xml,text/xml">
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin=""></script>
 <script>
 "use strict";
 
@@ -334,16 +382,53 @@ function allTags(){
 function parseTags(str){
   return [...new Set(String(str||"").split(",").map(t=>t.trim().replace(/^#/,"")).filter(Boolean))];
 }
+function fmtDist(m){
+  if(!Number.isFinite(m)) return "";
+  if(m < 1000) return Math.round(m) + " m";
+  return (m/1000).toFixed(m < 10000 ? 1 : 0).replace(".", ",") + " km";
+}
 
 /* ============ mappa ============ */
 const map = L.map("map", { zoomControl:false, attributionControl:true })
   .setView([45.4642, 9.1900], 13); // Milano
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-}).addTo(map);
 
-const markersLayer = L.layerGroup().addTo(map);
+/* tile: chiare (OSM) o scure (CARTO) secondo il tema di sistema */
+const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
+let tileLayer = null;
+function setTiles(){
+  if(tileLayer) map.removeLayer(tileLayer);
+  if(darkMq.matches){
+    tileLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19, subdomains: "abcd",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    });
+  }else{
+    tileLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    });
+  }
+  tileLayer.addTo(map);
+}
+setTiles();
+if(darkMq.addEventListener) darkMq.addEventListener("change", setTiles);
+
+/* cluster dei marker (fallback a layerGroup se il plugin non carica) */
+const markersLayer = (typeof L.markerClusterGroup === "function"
+  ? L.markerClusterGroup({
+      showCoverageOnHover: false,
+      maxClusterRadius: 56,
+      chunkedLoading: true,
+      iconCreateFunction: c => {
+        const n = c.getChildCount();
+        return L.divIcon({
+          className: "",
+          html: `<div class="cluster${n>=100?" big":""}">${n}</div>`,
+          iconSize: [42,42], iconAnchor: [21,21]
+        });
+      }
+    })
+  : L.layerGroup()).addTo(map);
 let tmpMarker = null;
 
 function pinIcon(cat, tmp=false, status=null){
@@ -367,12 +452,13 @@ function visiblePlaces(){
 }
 function renderMarkers(){
   markersLayer.clearLayers();
-  visiblePlaces().forEach(p=>{
+  const arr = visiblePlaces().map(p=>{
     const c = catById(p.cat);
-    L.marker([p.lat, p.lon], { icon: pinIcon(c, false, p.status), title: p.name })
-      .on("click", ()=> openDetail(p.id))
-      .addTo(markersLayer);
+    return L.marker([p.lat, p.lon], { icon: pinIcon(c, false, p.status), title: p.name })
+      .on("click", ()=> openDetail(p.id));
   });
+  if(markersLayer.addLayers) markersLayer.addLayers(arr);
+  else arr.forEach(m=>m.addTo(markersLayer));
 }
 
 /* pressione prolungata sulla mappa → aggiungi posto */
@@ -525,7 +611,7 @@ function renderChips(){
   // chip "tutti"
   const all = document.createElement("button");
   all.className = "chip" + ((filters.cats.size===0 && filters.status.size===0 && filters.tags.size===0) ? " on" : "");
-  all.style.setProperty("--c", "#20242E");
+  all.style.setProperty("--c", "var(--neutral)");
   all.textContent = "Tutti";
   all.addEventListener("click", ()=>{
     filters.cats.clear(); filters.status.clear(); filters.tags.clear();
@@ -716,7 +802,7 @@ function openDetail(id){
       ${(p.tags&&p.tags.length) ? `<div class="tags">${p.tags.map(t=>`<span class="tag">#${esc(t)}</span>`).join("")}</div>` : ""}
       ${p.address ? `<div class="addr">${esc(p.address)}</div>` : ""}
       ${p.notes ? `<div class="notes">${esc(p.notes)}</div>` : ""}
-      <div class="meta">Aggiunto il ${new Date(p.created).toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"})} · ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}</div>
+      <div class="meta">Aggiunto il ${new Date(p.created).toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"})} · ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}${lastPos ? ` · a ${fmtDist(distM(lastPos.lat, lastPos.lng, p.lat, p.lon))} da te` : ""}</div>
       <div class="btnrow" style="margin-top:16px">
         <button class="btn ghost" id="d-maps">Indicazioni</button>
         <button class="btn ghost" id="d-edit">Modifica</button>
@@ -763,10 +849,62 @@ function openList(){
   const body = openSheet("I tuoi posti");
   body.innerHTML = `
     <div class="listsearch"><input type="text" id="l-q" placeholder="Filtra per nome, tag o indirizzo…" autocomplete="off"></div>
+    <div class="sortrow"><span class="lbl">Ordina</span><span id="l-sort"></span></div>
     <div id="l-items"></div>
   `;
   const itemsEl = body.querySelector("#l-items");
   const inp = body.querySelector("#l-q");
+  const sortEl = body.querySelector("#l-sort");
+  const CHUNK = 80;
+  let shown = CHUNK;
+
+  const SORTS = [
+    {id:"name", label:"Nome"},
+    {id:"dist", label:"Distanza"},
+    {id:"recent", label:"Recenti"}
+  ];
+  function curSort(){ return (state.settings && state.settings.sort) || "name"; }
+  function setSort(id){
+    state.settings = state.settings || {};
+    state.settings.sort = id;
+    save();
+    if(id === "dist" && !lastPos){
+      toast("Attivo la posizione…");
+      map.locate({ setView:false, enableHighAccuracy:true });
+    }
+    shown = CHUNK;
+    paintSort(); paint();
+  }
+  function paintSort(){
+    sortEl.innerHTML = "";
+    SORTS.forEach(s=>{
+      const b = document.createElement("button");
+      b.className = "chip" + (curSort()===s.id ? " on" : "");
+      b.style.setProperty("--c", "var(--neutral)");
+      b.textContent = s.label;
+      b.addEventListener("click", ()=> setSort(s.id));
+      sortEl.appendChild(b);
+    });
+  }
+
+  function makeRow(p){
+    const c = catById(p.cat);
+    const st = stById(p.status || "try");
+    const b = document.createElement("button");
+    b.className = "placerow";
+    b.style.setProperty("--c", c.color);
+    const dist = lastPos ? ` <span class="pdist">· ${fmtDist(distM(lastPos.lat, lastPos.lng, p.lat, p.lon))}</span>` : "";
+    b.innerHTML = `
+      <span class="pdot">${esc(c.emoji)}</span>
+      <span class="pt">
+        <div class="pn"><span style="color:${esc(st.color)}">${st.icon}</span> ${esc(p.name)}${dist}</div>
+        ${p.address?`<div class="pa">${esc(p.address)}</div>`:""}
+        ${(p.tags&&p.tags.length)?`<div class="ptags">${p.tags.map(t=>"#"+esc(t)).join(" ")}</div>`:""}
+      </span>`;
+    b.addEventListener("click", ()=>{ openDetail(p.id); });
+    return b;
+  }
+
   function paint(){
     const q = inp.value.trim().toLowerCase();
     let list = visiblePlaces();
@@ -775,30 +913,34 @@ function openList(){
       (p.address||"").toLowerCase().includes(q) ||
       (p.tags||[]).some(t=>t.toLowerCase().includes(q))
     );
-    list = [...list].sort((a,b)=>a.name.localeCompare(b.name,"it"));
+    const s = curSort();
+    if(s === "dist" && lastPos){
+      list = [...list].sort((a,b)=>
+        distM(lastPos.lat, lastPos.lng, a.lat, a.lon) - distM(lastPos.lat, lastPos.lng, b.lat, b.lon));
+    }else if(s === "recent"){
+      list = [...list].sort((a,b)=>(b.created||0)-(a.created||0));
+    }else{
+      list = [...list].sort((a,b)=>a.name.localeCompare(b.name,"it"));
+    }
     itemsEl.innerHTML = "";
     if(!list.length){
       itemsEl.innerHTML = `<div class="empty">${state.places.length ? "Nessun posto corrisponde ai filtri." : "Nessun posto salvato.<br>Cerca un locale o tieni premuto sulla mappa per aggiungerne uno."}</div>`;
       return;
     }
-    list.forEach(p=>{
-      const c = catById(p.cat);
-      const st = stById(p.status || "try");
-      const b = document.createElement("button");
-      b.className = "placerow";
-      b.style.setProperty("--c", c.color);
-      b.innerHTML = `
-        <span class="pdot">${esc(c.emoji)}</span>
-        <span class="pt">
-          <div class="pn"><span style="color:${esc(st.color)}">${st.icon}</span> ${esc(p.name)}</div>
-          ${p.address?`<div class="pa">${esc(p.address)}</div>`:""}
-          ${(p.tags&&p.tags.length)?`<div class="ptags">${p.tags.map(t=>"#"+esc(t)).join(" ")}</div>`:""}
-        </span>`;
-      b.addEventListener("click", ()=>{ openDetail(p.id); });
-      itemsEl.appendChild(b);
-    });
+    const frag = document.createDocumentFragment();
+    list.slice(0, shown).forEach(p=> frag.appendChild(makeRow(p)));
+    itemsEl.appendChild(frag);
+    if(list.length > shown){
+      const more = document.createElement("button");
+      more.className = "loadmore";
+      more.textContent = `Mostra altri (${list.length - shown} rimanenti)`;
+      more.addEventListener("click", ()=>{ shown += 200; paint(); });
+      itemsEl.appendChild(more);
+    }
   }
-  inp.addEventListener("input", debounce(paint, 150));
+  inp.addEventListener("input", debounce(()=>{ shown = CHUNK; paint(); }, 150));
+  map.once("locationfound", ()=>{ if(sheet.classList.contains("open")) paint(); });
+  paintSort();
   paint();
 }
 
@@ -817,7 +959,7 @@ function openTagFilter(){
     tags.forEach(t=>{
       const b = document.createElement("button");
       b.className = "chip" + (filters.tags.has(t) ? " on" : "");
-      b.style.setProperty("--c", "#20242E");
+      b.style.setProperty("--c", "var(--neutral)");
       b.textContent = "#" + t;
       b.addEventListener("click", ()=>{
         filters.tags.has(t) ? filters.tags.delete(t) : filters.tags.add(t);
@@ -858,21 +1000,45 @@ function openSettings(){
         <button class="btn ghost" id="s-imp">Importa JSON</button>
       </div>
       <div class="btnrow" style="margin-top:10px">
-        <button class="btn ghost" id="s-tko">Importa da Google Takeout</button>
+        <button class="btn ghost" id="s-tko">Importa da Google (Takeout / My Maps)</button>
       </div>
-      <p class="stat" style="margin-top:10px">I dati restano solo su questo dispositivo. Esporta periodicamente un backup.<br>Takeout: supporta "Saved Places.json" e i CSV degli elenchi salvati.</p>
+      <p class="stat" style="margin-top:10px">I dati restano solo su questo dispositivo. Esporta periodicamente un backup.<br>Formati supportati: "Saved Places.json" e CSV di Takeout, e file KML di Google My Maps.</p>
     </div>
     <div class="setsec">
       <h3>Archivio</h3>
       <p class="stat">${nPlaces} ${nPlaces===1?"posto salvato":"posti salvati"} · ${nTags} tag · ${state.categories.length} categorie</p>
-      <p class="stat">Posti v2 · Dati mappa © OpenStreetMap · Ricerca: Photon / Nominatim</p>
+      <p class="stat">MilanoGourmet v3 · Mappa © OpenStreetMap / CARTO · Ricerca: Photon / Nominatim</p>
     </div>
   `;
   const catsEl = body.querySelector("#s-cats");
+  let editingCat = null;
   function paint(){
     catsEl.innerHTML = "";
     state.categories.forEach(c=>{
       const used = state.places.filter(p=>p.cat===c.id).length;
+      if(editingCat === c.id){
+        const row = document.createElement("div");
+        row.className = "newcat";
+        row.style.marginBottom = "7px";
+        row.innerHTML = `
+          <input type="text" class="e-name" value="${esc(c.name)}" autocomplete="off">
+          <input type="text" class="e-emoji emoji" value="${esc(c.emoji)}" maxlength="4" autocomplete="off">
+          <input type="color" class="e-color" value="${esc(c.color)}" aria-label="Colore categoria">
+          <button class="add e-save" aria-label="Salva modifiche">✓</button>
+        `;
+        row.querySelector(".e-save").addEventListener("click", ()=>{
+          const name = row.querySelector(".e-name").value.trim();
+          if(!name){ toast("Il nome non può essere vuoto"); return; }
+          c.name = name;
+          c.emoji = row.querySelector(".e-emoji").value.trim() || "📍";
+          c.color = row.querySelector(".e-color").value;
+          editingCat = null;
+          refresh(); paint();
+          toast("Categoria aggiornata");
+        });
+        catsEl.appendChild(row);
+        return;
+      }
       const row = document.createElement("div");
       row.className = "catrow";
       row.style.setProperty("--c", c.color);
@@ -880,8 +1046,13 @@ function openSettings(){
         <span class="dot"></span>
         <span class="cn">${esc(c.emoji)} ${esc(c.name)}</span>
         <span class="cc">${used ? used + " posti" : ""}</span>
+        <button class="edit" data-id="${esc(c.id)}" aria-label="Modifica categoria">✏️</button>
         ${used ? "" : `<button class="del" data-id="${esc(c.id)}" aria-label="Elimina categoria">🗑</button>`}
       `;
+      row.querySelector(".edit").addEventListener("click", ()=>{
+        editingCat = c.id;
+        paint();
+      });
       const del = row.querySelector(".del");
       if(del) del.addEventListener("click", ()=>{
         if(!confirm(`Eliminare la categoria “${c.name}”?`)) return;
@@ -936,7 +1107,36 @@ document.getElementById("importfile").addEventListener("change", e=>{
   e.target.value = "";
 });
 
-/* ============ import Google Takeout ============ */
+/* ============ import Google Takeout / My Maps ============ */
+function parseKML(text){
+  const items = [], pending = [];
+  let doc;
+  try{ doc = new DOMParser().parseFromString(text, "application/xml"); }
+  catch(e){ return {items, pending}; }
+  const marks = doc.getElementsByTagName("Placemark");
+  for(let k=0; k<marks.length; k++){
+    const pm = marks[k];
+    const nameEl = pm.getElementsByTagName("name")[0];
+    const name = (nameEl ? nameEl.textContent : "").trim();
+    if(!name) continue;
+    const descEl = pm.getElementsByTagName("description")[0];
+    let notes = (descEl ? descEl.textContent : "").replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+    if(notes.length > 280) notes = notes.slice(0, 280) + "…";
+    const pt = pm.getElementsByTagName("Point")[0];
+    if(pt){
+      const cEl = pt.getElementsByTagName("coordinates")[0];
+      const first = (cEl ? cEl.textContent : "").trim().split(/\s+/)[0] || "";
+      const parts = first.split(",");
+      const lon = parseFloat(parts[0]), lat = parseFloat(parts[1]);
+      if(validCoords(lat, lon)){ items.push({name, address:"", lat, lon, notes}); continue; }
+    }
+    // percorsi/aree (LineString, Polygon, ...) non sono locali: ignora
+    if(pm.getElementsByTagName("LineString").length || pm.getElementsByTagName("Polygon").length ||
+       pm.getElementsByTagName("MultiGeometry").length) continue;
+    pending.push({name, notes});
+  }
+  return {items, pending};
+}
 function parseCSV(text){
   const rows = []; let row = [], field = "", inQ = false;
   for(let i=0; i<text.length; i++){
@@ -970,6 +1170,10 @@ function validCoords(lat, lon){
 }
 function parseTakeout(text){
   const items = [], pending = [];
+  const t = text.trim();
+  if(t.startsWith("<") || t.indexOf("<kml") !== -1 || t.indexOf("<Placemark") !== -1){
+    return parseKML(text);
+  }
   let gj = null;
   try{ gj = JSON.parse(text); }catch(e){}
   if(gj && gj.type === "FeatureCollection" && Array.isArray(gj.features)){
@@ -1040,7 +1244,7 @@ function openTakeoutPreview(parsed){
   const toGeo = pending.slice(0, MAXG);
   let selCat = (state.categories.find(c=>c.id==="altro") || state.categories[0]).id;
   let selSt = "try";
-  const body = openSheet("Importa da Takeout");
+  const body = openSheet("Importa da Google");
   body.innerHTML = `
     <p class="stat" style="margin-bottom:14px">
       Riconosciuti <b>${items.length}</b> posti con coordinate${pending.length ? ` e <b>${pending.length}</b> senza coordinate, che verranno cercati per nome${pending.length>MAXG ? ` (primi ${MAXG})` : ""}` : ""}.
@@ -1136,10 +1340,12 @@ document.getElementById("takeoutfile").addEventListener("change", e=>{
 
 /* ============ posizione ============ */
 let meMarker = null;
+let lastPos = null;
 document.getElementById("btn-locate").addEventListener("click", ()=>{
   map.locate({ setView:true, maxZoom:16, enableHighAccuracy:true });
 });
 map.on("locationfound", e=>{
+  lastPos = e.latlng;
   if(meMarker) map.removeLayer(meMarker);
   meMarker = L.circleMarker(e.latlng, { radius:8, color:"#FFFFFF", weight:3, fillColor:"#2E6FE8", fillOpacity:1 }).addTo(map);
 });
