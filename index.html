@@ -456,40 +456,52 @@ async function onMapLongPress(latlng){
 /* ============ geocoding ============ */
 async function searchPlaces(q){
   const c = map.getCenter();
-  // Photon (komoot): veloce, adatto all'autocomplete
-  try{
-    const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lat=${c.lat.toFixed(4)}&lon=${c.lng.toFixed(4)}`;
-    const r = await fetch(u);
-    if(r.ok){
-      const d = await r.json();
-      const out = (d.features||[]).map(f=>{
-        const p = f.properties || {};
-        const parts = [p.street && (p.street + (p.housenumber? " "+p.housenumber : "")), p.postcode, p.city || p.county, p.country]
-          .filter(Boolean);
-        return {
-          name: p.name || parts[0] || "Senza nome",
-          address: parts.join(", "),
-          lat: f.geometry.coordinates[1],
-          lon: f.geometry.coordinates[0]
-        };
-      });
-      if(out.length) return out;
-    }
-  }catch(e){ console.warn("photon:", e); }
-  // Fallback: Nominatim
-  try{
-    const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=it&q=${encodeURIComponent(q)}`;
-    const r = await fetch(u);
-    if(r.ok){
-      const d = await r.json();
-      return d.map(x=>({
-        name: x.name || (x.display_name||"").split(",")[0],
-        address: x.display_name || "",
-        lat: parseFloat(x.lat), lon: parseFloat(x.lon)
-      }));
-    }
-  }catch(e){ console.warn("nominatim:", e); }
-  return [];
+  const seen = new Set();
+  const out = [];
+  const push = list => list.forEach(f=>{
+    if(!Number.isFinite(f.lat) || !Number.isFinite(f.lon)) return;
+    const k = f.name.toLowerCase() + "|" + f.lat.toFixed(4) + "|" + f.lon.toFixed(4);
+    if(!seen.has(k)){ seen.add(k); out.push(f); }
+  });
+  const mapPhoton = f => {
+    const p = f.properties || {};
+    const parts = [p.street && (p.street + (p.housenumber? " "+p.housenumber : "")), p.postcode, p.city || p.county, p.country]
+      .filter(Boolean);
+    return {
+      name: p.name || parts[0] || "Senza nome",
+      address: parts.join(", "),
+      lat: f.geometry.coordinates[1],
+      lon: f.geometry.coordinates[0]
+    };
+  };
+  const photon = async (bias) => {
+    try{
+      const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6`
+        + (bias ? `&lat=${c.lat.toFixed(4)}&lon=${c.lng.toFixed(4)}` : "");
+      const r = await fetch(u);
+      if(r.ok){ const d = await r.json(); return (d.features||[]).map(mapPhoton); }
+    }catch(e){ console.warn("photon:", e); }
+    return [];
+  };
+  // due ricerche in parallelo: vicino al centro mappa + globale senza bias
+  const [near, glob] = await Promise.all([photon(true), photon(false)]);
+  push(near); push(glob);
+  // Nominatim entra in gioco ogni volta che i risultati sono scarsi
+  if(out.length < 3){
+    try{
+      const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=it&q=${encodeURIComponent(q)}`;
+      const r = await fetch(u);
+      if(r.ok){
+        const d = await r.json();
+        push(d.map(x=>({
+          name: x.name || (x.display_name||"").split(",")[0],
+          address: x.display_name || "",
+          lat: parseFloat(x.lat), lon: parseFloat(x.lon)
+        })));
+      }
+    }catch(e){ console.warn("nominatim:", e); }
+  }
+  return out.slice(0, 8);
 }
 async function reverseGeocode(lat, lon){
   try{
@@ -514,7 +526,7 @@ const doSearch = debounce(async ()=>{
   const found = await searchPlaces(q);
   if(qInput.value.trim() !== q) return; // risposta superata
   if(!found.length){
-    resultsEl.innerHTML = `<div class="res hint">Nessun risultato. Prova ad aggiungere la città (es. “… Milano”).</div>`;
+    resultsEl.innerHTML = `<div class="res hint">Nessun risultato. Non tutti i locali sono censiti su OpenStreetMap: prova ad aggiungere la città (es. “… Milano”), oppure tieni premuto sulla mappa nel punto esatto per salvarlo a mano.</div>`;
     return;
   }
   resultsEl.innerHTML = "";
