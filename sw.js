@@ -1,8 +1,8 @@
 /* Posti — service worker v1 */
 "use strict";
 
-const SHELL = "posti-shell-v13";
-const TILES = "posti-tiles-v13";
+const SHELL = "posti-shell-v15";
+const TILES = "posti-tiles-v15";
 const TILE_LIMIT = 300;
 
 const SHELL_ASSETS = [

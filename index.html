@@ -188,9 +188,6 @@ button{font-family:var(--font-ui)}
 }
 .btn.primary{background:var(--bitter);color:var(--white)}
 .btn.primary:active{filter:brightness(.92)}
-.btn.big{width:100%;padding:15px;font-size:16px;justify-content:center}
-.bkbox{background:var(--paper-2,#F3EFE7);border:1px solid rgba(0,0,0,.07);border-radius:14px;padding:16px}
-.bktitle{font-weight:700;margin:0 0 6px;color:var(--ink)}
 .btn.ghost{background:var(--white);border:1.5px solid var(--line);color:var(--ink)}
 .btn.danger{background:var(--white);border:1.5px solid #E3B8B1;color:#A8341F}
 
@@ -299,7 +296,7 @@ input[type=file]{display:none}
 <script>
 "use strict";
 
-const APP_VERSION = "4.4";
+const APP_VERSION = "5.0";
 
 /* ============ stato e persistenza ============ */
 const LS_KEY = "posti.data.v1";
@@ -1120,16 +1117,6 @@ function openSettings(){
   const nPlaces = state.places.length, nTags = allTags().length;
   body.innerHTML = `
     <div class="setsec">
-      <h3>Backup</h3>
-      <div class="bkbox">
-        <p class="bktitle">I tuoi posti vivono solo su questo iPhone.</p>
-        <p class="stat" style="margin:0 0 12px">Se reinstalli l'app o iOS libera spazio, senza backup vai perso. Salva il file su iCloud Drive: da lì sopravvive a tutto.</p>
-        <button class="btn primary big" id="s-exp">⬆︎ Salva backup su File / iCloud</button>
-        <button class="btn ghost" id="s-imp" style="margin-top:8px">⬇︎ Ripristina da backup</button>
-        <p class="stat" id="s-bkstat" style="margin-top:12px">${esc(backupStatusText())}</p>
-      </div>
-    </div>
-    <div class="setsec">
       <h3>Categorie</h3>
       <div id="s-cats"></div>
       <div class="newcat" style="margin-top:10px">
@@ -1138,6 +1125,15 @@ function openSettings(){
         <input type="color" id="s-cc" value="#D8432C" aria-label="Colore categoria">
         <button class="add" id="s-add" aria-label="Aggiungi categoria">+</button>
       </div>
+    </div>
+    <div class="setsec">
+      <h3>Backup</h3>
+      <div class="btnrow">
+        <button class="btn primary" id="s-exp">Salva backup</button>
+        <button class="btn ghost" id="s-imp">Ripristina</button>
+      </div>
+      <p class="stat" id="s-bkstat" style="margin-top:10px">${esc(backupStatusText())}</p>
+      <p class="stat">I dati sono salvati soltanto su questo iPhone: esporta periodicamente un backup su iCloud Drive.</p>
     </div>
     <div class="setsec">
       <h3>Importa da altre fonti</h3>
@@ -1652,7 +1648,7 @@ function locateMe(center){
     setLocBusy(false);
     let msg;
     if(err.code === 1){
-      msg = "Permesso negato. Impostazioni iPhone → Privacy e sicurezza → Localizzazione → Safari (o MilanoGourmet) → Durante l'uso";
+      msg = "Posizione non disponibile";
     }else if(err.code === 2){
       msg = "Posizione non rilevabile: prova all'aperto o verifica che la Localizzazione sia attiva";
     }else if(err.code === 3){
