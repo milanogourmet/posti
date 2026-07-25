@@ -188,6 +188,9 @@ button{font-family:var(--font-ui)}
 }
 .btn.primary{background:var(--bitter);color:var(--white)}
 .btn.primary:active{filter:brightness(.92)}
+.btn.big{width:100%;padding:15px;font-size:16px;justify-content:center}
+.bkbox{background:var(--paper-2,#F3EFE7);border:1px solid rgba(0,0,0,.07);border-radius:14px;padding:16px}
+.bktitle{font-weight:700;margin:0 0 6px;color:var(--ink)}
 .btn.ghost{background:var(--white);border:1.5px solid var(--line);color:var(--ink)}
 .btn.danger{background:var(--white);border:1.5px solid #E3B8B1;color:#A8341F}
 
@@ -296,7 +299,7 @@ input[type=file]{display:none}
 <script>
 "use strict";
 
-const APP_VERSION = "4.3";
+const APP_VERSION = "4.4";
 
 /* ============ stato e persistenza ============ */
 const LS_KEY = "posti.data.v1";
@@ -374,7 +377,9 @@ function sanitizeState(d){
     });
   });
   const srt = d.settings && typeof d.settings === "object" ? d.settings.sort : null;
+  const lb = d.settings && Number.isFinite(+d.settings.lastBackup) ? +d.settings.lastBackup : null;
   out.settings = { sort: ["name","dist","recent"].includes(srt) ? srt : "name" };
+  if(lb) out.settings.lastBackup = lb;
   return { ok:true, state: out, dropped };
 }
 
@@ -1115,6 +1120,16 @@ function openSettings(){
   const nPlaces = state.places.length, nTags = allTags().length;
   body.innerHTML = `
     <div class="setsec">
+      <h3>Backup</h3>
+      <div class="bkbox">
+        <p class="bktitle">I tuoi posti vivono solo su questo iPhone.</p>
+        <p class="stat" style="margin:0 0 12px">Se reinstalli l'app o iOS libera spazio, senza backup vai perso. Salva il file su iCloud Drive: da lì sopravvive a tutto.</p>
+        <button class="btn primary big" id="s-exp">⬆︎ Salva backup su File / iCloud</button>
+        <button class="btn ghost" id="s-imp" style="margin-top:8px">⬇︎ Ripristina da backup</button>
+        <p class="stat" id="s-bkstat" style="margin-top:12px">${esc(backupStatusText())}</p>
+      </div>
+    </div>
+    <div class="setsec">
       <h3>Categorie</h3>
       <div id="s-cats"></div>
       <div class="newcat" style="margin-top:10px">
@@ -1125,15 +1140,11 @@ function openSettings(){
       </div>
     </div>
     <div class="setsec">
-      <h3>Backup e importazione</h3>
+      <h3>Importa da altre fonti</h3>
       <div class="btnrow">
-        <button class="btn ghost" id="s-exp">Esporta JSON</button>
-        <button class="btn ghost" id="s-imp">Importa JSON</button>
-      </div>
-      <div class="btnrow" style="margin-top:10px">
         <button class="btn ghost" id="s-tko">Importa da Google (Takeout / My Maps)</button>
       </div>
-      <p class="stat" style="margin-top:10px">I dati restano solo su questo dispositivo. Esporta periodicamente un backup.<br>Formati supportati: "Saved Places.json" e CSV di Takeout, e file KML di Google My Maps.</p>
+      <p class="stat" style="margin-top:10px">Formati supportati: "Saved Places.json" e CSV di Takeout, e file KML di Google My Maps.</p>
     </div>
     <div class="setsec">
       <h3>Motore di ricerca</h3>
@@ -1298,14 +1309,45 @@ function openSettings(){
   });
 }
 
-function exportJSON(){
-  const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+async function exportJSON(){
+  const testo = JSON.stringify(state, null, 2);
+  const nome = `MilanoGourmet-backup-${new Date().toISOString().slice(0,10)}.json`;
+  // Via preferita su iPhone: menu di condivisione con file -> "Salva su File" / iCloud Drive
+  try{
+    const file = new File([testo], nome, { type:"application/json" });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){
+      await navigator.share({ files:[file], title:"Backup MilanoGourmet" });
+      markBackup();
+      return;
+    }
+  }catch(e){
+    if(e && e.name === "AbortError") return; // l'utente ha annullato il menu: nessun errore
+    console.warn("share:", e);
+  }
+  // Ricaduta (browser desktop o iOS che non condivide file): download classico
+  const blob = new Blob([testo], { type:"application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `posti-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.download = nome;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  markBackup();
   toast("Backup esportato");
+}
+function markBackup(){
+  state.settings = state.settings || {};
+  state.settings.lastBackup = Date.now();
+  save();
+  const el = document.getElementById("s-bkstat");
+  if(el) el.textContent = backupStatusText();
+}
+function backupStatusText(){
+  const t = state.settings && state.settings.lastBackup;
+  const n = state.places.length;
+  if(!t) return `${n} posti salvati. Nessun backup ancora esportato.`;
+  const giorni = Math.floor((Date.now() - t) / 86400000);
+  const quando = giorni <= 0 ? "oggi" : giorni === 1 ? "ieri" : `${giorni} giorni fa`;
+  return `${n} posti. Ultimo backup: ${quando}.`;
 }
 document.getElementById("importfile").addEventListener("change", e=>{
   const f = e.target.files[0];
@@ -1317,10 +1359,13 @@ document.getElementById("importfile").addEventListener("change", e=>{
       if(!sd.ok) throw new Error("formato");
       const extra = sd.dropped ? ` (${sd.dropped} voci scartate perché non valide)` : "";
       if(!confirm(`Importare ${sd.state.places.length} posti${extra}? I dati attuali verranno sostituiti.`)) return;
-      state = sd.state; save();
+      state = sd.state;
+      state.settings = state.settings || {};
+      state.settings.lastBackup = Date.now();
+      save();
       filters.cats.clear(); filters.tags.clear(); filters.status.clear();
       refresh(); closeSheet();
-      toast("Backup importato");
+      toast("Backup ripristinato");
     }catch(err){ toast("File non valido"); }
   };
   r.readAsText(f);
